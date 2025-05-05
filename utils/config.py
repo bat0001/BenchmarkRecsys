@@ -11,7 +11,7 @@ def get_config():
     parser.add_argument("--num_iterations", type=int, default=5000, help="Number of training iterations")
     parser.add_argument("--entropy_coeff", type=float, default=0.01, help="Entropy coefficient")
     parser.add_argument("--dataset", type=str, default="CIFAR-10",
-                    choices=["CIFAR-10", "CIFAR-100", "FashionMNIST", "COCO"],
+                    choices=["CIFAR-10", "CIFAR-100", "FashionMNIST", "COCO", "AMAZON"],
                     help="Name of the dataset")
     parser.add_argument("--target_classes", type=str, default="airplane:2,truck:2",
                         help="Target classes (CIFAR) and their reward, format 'class:reward,class2:reward,...'")
@@ -46,6 +46,16 @@ def get_config():
                     default="baselines/bandit/linucb.pt",
                     help="Path to bandit.pt file")
 
+
+    #amazon tmp
+
+    parser.add_argument("--amazon_path", type=str, default="data/amazon.csv",
+                    help="Chemin vers le CSV Amazon Reviews")
+    parser.add_argument('--abtest', action='store_true')
+    parser.add_argument('--ucb',    action='store_true')
+    parser.add_argument('--abtest_n_test', type=int, default=1000)
+    parser.add_argument('--ucb_c',  type=float, default=2.0)
+
     # plots
     parser.add_argument(
         "--plots", action="store_true",
@@ -59,3 +69,4 @@ def get_config():
     args.target_classes = target_classes
 
     return args
+
