@@ -44,7 +44,7 @@ from utils.encoding import encode_dataset
 from utils.plots import (
     plot_reward_curves, plot_selection_overlap, plot_entropy_vs_reward
 )
-
+from baselines import BASELINE_REGISTRY
 
 GFN_FACTORY = {
     "classical": GFlowNetMulticlass,
@@ -156,11 +156,10 @@ def main():
     reward_fn = build_reward_fn(cfg, objectives, cat_map, class_indices)
 
     active_methods = {
-        "classical": cfg.classical_gflownet or cfg.all,
-        "binary": cfg.preference_binary_gflownet or cfg.all,
-        "dpo": cfg.preference_dpo_gflownet or cfg.all,
-        "bandit": cfg.MAB,
-        "random": cfg.random_baseline
+        "abtest":  cfg.abtest,
+        "ucb":     cfg.ucb,
+        "bandit":  cfg.MAB,
+        "random":  cfg.random_baseline,
     }
 
     METHOD_DISPATCH = {
@@ -217,18 +216,46 @@ def main():
         if active_methods[name]:
             metrics_map[name] = eval_fn(trained[name], trained_results[name])
 
-    log_comparison(metrics_map)
 
-    active_heads = {
-        "classical": cfg.classical_gflownet or cfg.all,
-        "binary": cfg.preference_binary_gflownet or cfg.all,
-        "dpo": cfg.preference_dpo_gflownet or cfg.all,
-    }
-    trainers, models = {}, {}
-    for name, flag in active_heads.items():
-        if flag:
-            trainers[name], models[name] = train_head(name, cfg, embeddings, meta, objectives,
-                                                      class_indices, reward_fn)
+
+    metrics_map = {}
+    histories   = {}                        # pour les plots reward‑curve
+
+    for name, active in active_methods.items():
+        if not active:
+            continue
+
+        cfg.out_dir = f"baselines/{name}"
+
+        if name in {"abtest", "ucb"}:
+            BaselineCls = BASELINE_REGISTRY[name]
+            bl = BaselineCls(cfg)
+            bl.offline_fit(ds)                           
+            met = bl.online_simulate(cfg.num_iterations)
+            metrics_map[name] = met
+
+        elif name == "bandit":
+            linucb = load_linucb(
+                getattr(cfg, "bandit_ckpt", "baselines/bandit/linucb.pt"),
+                dim=embeddings.shape[1],
+                alpha=getattr(cfg, "bandit_alpha", 1.0)
+            )
+            met = evaluate_bandit(
+                linucb, embeddings, meta, reward_fn,
+                objectives, class_indices, cfg.subset_size
+            )
+            metrics_map[name] = met
+
+        elif name == "random":
+            _, ys = random_baseline(
+                embeddings, meta, reward_fn, objectives, class_indices,
+                cfg.subset_size, DEVICE, cfg.num_iterations, cfg.batch_size_train
+            )
+            metrics_map[name] = {"Reward Mean": float(np.mean(ys))}
+            histories[name] = ys
+
+
+#    log_comparison(metrics_map)
 
     # if cfg.plots:
     #     histories = {
