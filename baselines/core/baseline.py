@@ -40,14 +40,20 @@ class BaseBaseline(ABC):
     def _build_model(self):
         """Instantiate and return the algorithm-specific model/policy."""
 
-    @abstractmethod
-    def _update_step(self):
-        """Perform one training update using self.embeddings + self.meta."""
+    # @abstractmethod
+    # def _update_step(self):
+    #     """Perform one training update using self.embeddings + self.meta."""
+
+    # @abstractmethod
+    # def _select_indices(self):
+    #     """Select a subset of indices (Tensor) for evaluation."""
 
     @abstractmethod
-    def _select_indices(self):
-        """Select a subset of indices (Tensor) for evaluation."""
+    def offline_fit(self, data): ...
 
+    @abstractmethod
+    def online_simulate(self, n_iters: int) -> dict[str, float]: ...
+    
     def train(self):
         """Generic training loop after data injection via set_data()."""
         assert hasattr(self, 'embeddings'), 'Call set_data() before train()'
