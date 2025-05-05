@@ -14,7 +14,6 @@ class LinUCBBaseline(BaseBaseline):
         self.class_idx   = None
         self.reward_fn   = None
 
-    # ----------------------------------------------------------------
     def _build_model(self):
         return LinUCB(self.cfg.latent_dim,
                       alpha=self.cfg.bandit_alpha,
