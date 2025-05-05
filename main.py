@@ -87,6 +87,17 @@ def train_head(name: str, cfg, embeddings, meta, objectives, class_indices, rewa
                                             cfg.batch_size_train, wandb)
     return trainer, model
 
+from baselines.bandit.utils import load_linucb
+
+def evaluate_bandit(policy, embeddings, meta, reward_fn,
+                    objectives, class_indices, subset_size, n_trials=1000):
+    total = 0.0
+    for _ in range(n_trials):
+        idx = policy.select(embeddings, subset_size)
+        r   = reward_fn(idx.unsqueeze(0), meta, objectives, class_indices)
+        total += float(r)
+    return {"Reward Mean": total / n_trials}
+
 
 def evaluate_head(name, trainer, model, embeddings, meta, cfg, objectives, cat_map, class_indices, class_names, ds):
     if cfg.dataset == "COCO":
@@ -168,16 +179,22 @@ def main():
         ),
         "bandit": (
             lambda: (
-                LinUCB(embeddings.shape[1], device=DEVICE),
-                train_bandit(
-                    LinUCB(embeddings.shape[1], device=DEVICE),
-                    embeddings, meta, reward_fn, objectives, class_indices,
-                    subset_size=cfg.subset_size,
-                    iters=cfg.num_iterations,
-                    batch=cfg.batch_size_train
-                )
+                load_linucb(
+                    getattr(cfg, "bandit_ckpt", "baselines/bandit/linucb.pt"),
+                    dim=embeddings.shape[1],
+                    alpha=getattr(cfg, "bandit_alpha", 1.0)
+                ),
+                None
             ),
-            lambda policy, rewards: {"Reward Mean": rewards[-1] if rewards else 0.0}
+            lambda policy, _: evaluate_bandit(
+                policy,
+                embeddings,
+                meta,
+                reward_fn,
+                objectives,
+                class_indices,
+                cfg.subset_size
+            )
         ),
     }
 

@@ -41,6 +41,11 @@ def get_config():
     # mode
     parser.add_argument('--it', action='store_true', help='Enable interactive mode with human feedback')
 
+
+    parser.add_argument("--bandit_ckpt", type=str,
+                    default="baselines/bandit/linucb.pt",
+                    help="Path to bandit.pt file")
+
     args, _ = parser.parse_known_args()
     
     target_classes = dict(item.split(":") for item in args.target_classes.split(","))
