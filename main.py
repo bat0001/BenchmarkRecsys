@@ -26,7 +26,7 @@ from utils.utils_coco import (
     build_cat_name_to_id_map, parse_objectives_coco,
     coco_collate_fn_keep_target_with_index,
 )
-from utils.rewards import reward_function_multiclass, reward_function_coco
+from utils.rewards import build_reward_fn
 from utils.visualization import (
     compute_image_selection_probabilities,
     plot_image_probability_by_objective,
@@ -42,157 +42,12 @@ from utils.metrics import (
     measure_image_diversity_from_list,
 )
 from utils.sampling import sample_many_sequences
+from utils.device import DEVICE
 from tabulate import tabulate
 from wandb import Table 
-
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-class BanditPolicy:
-    def select(self, contexts: torch.Tensor, k: int) -> torch.Tensor:
-        """Renvoie les indices des k images à proposer."""
-    def update(self, chosen: torch.Tensor, reward: torch.Tensor): ...
-
-import torch
-
-class LinUCB(BanditPolicy):
-    def __init__(self, dim: int, alpha: float = 1.0, device="cpu"):
-        self.A = torch.eye(dim, device=device)      
-        self.b = torch.zeros(dim, device=device)    
-        self.alpha = alpha
-        self.device = device
-
-    def _ucb(self, X): 
-        X = X.to(self.device)
-        A_inv = torch.linalg.inv(self.A)
-        theta = A_inv @ self.b                     
-        means = X @ theta                          
-        vars = torch.sum(X @ A_inv * X, dim=1)      
-        return means + self.alpha * torch.sqrt(vars)
-
-    @torch.no_grad()
-    def select(self, contexts: torch.Tensor, k: int) -> torch.Tensor:
-        """Greedy top‑k according to current UCB score."""
-        scores = self._ucb(contexts)          
-        topk = torch.topk(scores, k=k).indices     
-        return topk.to(contexts.device)     
-
-    def update(self, chosen_ctx: torch.Tensor, reward: torch.Tensor):
-        """chosen_ctx: k×d  – reward: scalaire ou (k,) broadcasté."""
-        if reward.ndim == 0:
-            reward = reward.expand(len(chosen_ctx))
-        for x, r in zip(chosen_ctx, reward):
-            x = x.unsqueeze(1)                    
-            self.A += x @ x.T
-            self.b += r * x.squeeze()
-
-def train_bandit(policy: BanditPolicy,
-                 embeddings: torch.Tensor,
-                 labels_or_anns,
-                 reward_fn,          
-                 objectives, class_indices,
-                 subset_size=4,
-                 iters=10_000, batch=1):
-    embeddings = embeddings.to(policy.device)
-
-    rewards_vs_iter = []
-    for it in range(iters):
-        idx = policy.select(embeddings, subset_size)   
-     
-        rew = reward_fn(idx.unsqueeze(0),
-                        labels_or_anns,
-                        objectives,
-                        class_indices)                      
-        policy.update(embeddings[idx], rew)                 
-        if (it+1) % 100 == 0:
-            rewards_vs_iter.append(rew.item())
-    return rewards_vs_iter
-        
-def _load_coco(cfg):
-    ds, _ = prepare_dataset("COCO")
-    objectives = parse_objectives_coco(cfg.target_classes_coco)
-    ds = filter_coco_inplace(ds, objectives, retaining_ratio=0.01)
-    cat_ids = sorted(ds.coco.getCatIds())
-    class_names = [c["name"] for c in ds.coco.loadCats(cat_ids)]
-    class_indices = {n: i for i, n in enumerate(class_names)}
-    return ds, objectives, class_names, class_indices
-
-
-def _load_cifar(cfg):
-    ds, _ = prepare_dataset(cfg.dataset)
-    num = getattr(cfg, 'num_per_class', 200)
-    ds = filter_dataset_all_classes(ds, num_per_class=num)
-    objectives = cfg.target_classes
-    class_indices = {n: ds.classes.index(n) for n in objectives}
-    return ds, objectives, ds.classes, class_indices
-
-DATASET_FACTORY = {
-    "COCO": _load_coco,
-    "CIFAR-10": _load_cifar,
-    "CIFAR-100": _load_cifar,
-}
-
-def make_backbone(cfg):
-    if cfg.model_type == "vae":
-        img_sz = 32 if cfg.dataset.startswith("CIFAR") else 224
-        return VAE(cfg.latent_dim, img_sz).to(DEVICE).eval()
-    # convnext
-    if cfg.dataset == "COCO":
-        return ConvNeXtTinyEncoder("facebook/convnext-tiny-224").to(DEVICE).eval()
-    return ConvNextTiny(cfg.latent_dim).to(DEVICE).eval()
-
-
-
-def encode_dataset(backbone: torch.nn.Module, ds, cfg) -> Tuple[torch.Tensor, Any]:
-    """Encode dataset into latent embeddings + labels or annotations.
-
-    Returns:
-        embeddings: Tensor of shape [N, latent_dim]
-        meta: Tensor of labels (for non-COCO) or list of annotations (for COCO)
-    """
-    kwargs = {}
-    is_coco = (cfg.dataset == "COCO")
-    if is_coco:
-        kwargs["collate_fn"] = coco_collate_fn_keep_target_with_index
-    dl = DataLoader(ds, batch_size=128, shuffle=False, **kwargs)
-
-    embeddings_list, meta_list = [], []
-    for batch in dl:
-        if is_coco:
-            imgs, anns, _ = batch
-            imgs = imgs.to(DEVICE)
-            with torch.no_grad():
-                if hasattr(backbone, "encode"):
-                    mu, _ = backbone.encode(imgs)
-                    z = mu
-                else:
-                    z = backbone(imgs)
-            embeddings_list.append(z.cpu())
-            meta_list.extend(anns)
-        else:
-            imgs, lbls = batch
-            imgs = imgs.to(DEVICE)
-            with torch.no_grad():
-                if hasattr(backbone, "encode"):
-                    mu, _ = backbone.encode(imgs)
-                    z = mu
-                else:
-                    z = backbone(imgs)
-            embeddings_list.append(z.cpu())
-            # lbls: Tensor of shape [batch_size]
-            meta_list.append(lbls)
-    embeddings = torch.cat(embeddings_list, dim=0)
-    if is_coco:
-        return embeddings, meta_list
-    # non-COCO: flatten label tensors to one 1D tensor
-    labels = torch.cat(meta_list, dim=0)
-    return embeddings, labels
-
-def build_reward_fn(cfg, objectives, cat_map, class_indices):
-    if cfg.dataset == "COCO":
-        def _fn(indices, all_annots, *_):
-            return reward_function_coco(indices, all_annots, cat_map, objectives, device=DEVICE)
-        return _fn
-    return reward_function_multiclass
+from datasets.loader import DATASET_FACTORY
+from models.backbone_factory import make_backbone
+from utils.encoding import encode_dataset
 
 GFN_FACTORY = {
     "classical": GFlowNetMulticlass,
