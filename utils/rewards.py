@@ -1,4 +1,5 @@
 import torch
+from utils.device import DEVICE
 
 # Autre logique possible si on veut la reward maximale dès que l'objet max satisfait la conditoin, par ex. un chien a lunette, c'est pas un humain, ni un homme mais il a des lunettes donc il prendra +3
 # Au lieu de r_i += ...
@@ -163,3 +164,10 @@ def reward_function_coco(
         rewards[i] = total_reward_for_seq
 
     return rewards
+
+def build_reward_fn(cfg, objectives, cat_map, class_indices):
+    if cfg.dataset == "COCO":
+        def _fn(indices, all_annots, *_):
+            return reward_function_coco(indices, all_annots, cat_map, objectives, device=DEVICE)
+        return _fn
+    return reward_function_multiclass
