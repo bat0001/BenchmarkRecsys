@@ -9,6 +9,7 @@ import torch.optim as optim
 from typing import Dict
 from wandb import Table 
 from tabulate import tabulate
+import matplotlib.pyplot as plt
 
 from models.gflownet_classical import GFlowNetMulticlass
 from models.gflownet_binary_preference import BinaryPreferenceGFlowNet
@@ -39,6 +40,11 @@ from utils.device import DEVICE
 from datasets.loader import DATASET_FACTORY
 from models.backbone_factory import make_backbone
 from utils.encoding import encode_dataset
+
+from utils.plots import (
+    plot_reward_curves, plot_selection_overlap, plot_entropy_vs_reward
+)
+
 
 GFN_FACTORY = {
     "classical": GFlowNetMulticlass,
@@ -224,51 +230,27 @@ def main():
             trainers[name], models[name] = train_head(name, cfg, embeddings, meta, objectives,
                                                       class_indices, reward_fn)
 
-    # rand_x, rand_y = random_baseline(embeddings, meta, reward_fn, objectives, class_indices,
-    #                                  cfg.subset_size, DEVICE, cfg.num_iterations,
-    #                                  cfg.batch_size_train)
+    # if cfg.plots:
+    #     histories = {
+    #     name: res
+    #     for name, res in trained_results.items()
+    #     if isinstance(res, list) and len(res) > 0
+    #     }
+    #     if histories:
+    #         fig = plot_reward_curves(histories, "Reward vs Iterations")
+    #         wandb.log({"Plots/RewardCurves": wandb.Image(fig)})
+    #         plt.close(fig)
 
-    # metrics_map = {}
-    # for name, trainer in trainers.items():
-    #     m = evaluate_head(name, trainer, models[name], embeddings, meta, cfg,
-    #                       objectives, cat_map, class_indices, class_names, ds)
-    #     seqs = sample_many_sequences(models[name], embeddings, 5, cfg.subset_size, DEVICE, top_k=False)
-    #     m["Sequence Entropy"] = measure_sequence_diversity_from_list(seqs)
-    #     m["Image Entropy"] = measure_image_diversity_from_list(seqs)
-    #     metrics_map[name] = m
+    #     if {"bandit", "random"}.issubset(trained):
+    #         idx_bandit = trained["bandit"].select(embeddings, cfg.subset_size)
+    #         rand_idx   = torch.randperm(len(embeddings))[:cfg.subset_size].to(DEVICE)
+    #         fig = plot_selection_overlap(idx_bandit.cpu(), rand_idx.cpu(), len(embeddings))
+    #         wandb.log({"Plots/Overlap": wandb.Image(fig)})
+    #         plt.close(fig)
 
-    # log_comparison(metrics_map)
-
-    # if {"classical", "dpo"}.issubset(metrics_map):
-    #     plot_comparison(trainers["classical"].iterations_classical,
-    #                     trainers["classical"].reward_vs_images_classical,
-    #                     trainers["dpo"].iterations_comparison,
-    #                     trainers["dpo"].reward_vs_images_comparison,
-    #                     rand_x, rand_y, max_reward=None,
-    #                     title="Images seen vs Reward",
-    #                     x_label="Images", y_label="Reward",
-    #                     wandb_key="RewardVsImages")
-    #     plot_comparison_iterations(trainers["classical"].iterations_classical,
-    #                                trainers["classical"].reward_vs_images_classical,
-    #                                trainers["dpo"].iterations_comparison,
-    #                                trainers["dpo"].reward_vs_images_comparison,
-    #                                rand_x, rand_y, max_reward=None,
-    #                                title="Iterations vs Reward",
-    #                                x_label="Iter", y_label="Reward",
-    #                                wandb_key="RewardVsIter")
-
-    plot_umap_for_sequences(cfg, DEVICE, embeddings,
-                            trainers.get("classical").model if "classical" in trainers else None,
-                            trainers.get("dpo").model if "dpo" in trainers else None,
-                            all_annotations=meta if cfg.dataset == "COCO" else None,
-                            cat_map=cat_map if cfg.dataset == "COCO" else None,
-                            all_labels=meta if cfg.dataset != "COCO" else None,
-                            target_classes=objectives)
-
-    if args.it and "dpo" in trainers:
-        trainers["dpo"].iterative_human_feedback(embeddings, meta, objectives,
-                                                 class_indices, class_names, cfg.subset_size,
-                                                 iterations=args.iterations)
+    #     fig = plot_entropy_vs_reward(metrics_map)
+    #     wandb.log({"Plots/DiversityVsReward": wandb.Image(fig)})
+    #     plt.close(fig)
 
     wandb.finish()
 

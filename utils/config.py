@@ -46,6 +46,12 @@ def get_config():
                     default="baselines/bandit/linucb.pt",
                     help="Path to bandit.pt file")
 
+    # plots
+    parser.add_argument(
+        "--plots", action="store_true",
+        help="WIP plots ..."
+    )
+
     args, _ = parser.parse_known_args()
     
     target_classes = dict(item.split(":") for item in args.target_classes.split(","))
