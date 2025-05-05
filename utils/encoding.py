@@ -1,8 +1,7 @@
 import torch
 from torch.utils.data import DataLoader
 from utils.utils_coco import coco_collate_fn_keep_target_with_index
-
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+from utils.device import DEVICE
 
 def encode_dataset(backbone, ds, cfg):
     kwargs = {}
