@@ -6,3 +6,4 @@ wandb/
 experiments/check_proba/
 experiments/with_torchgfn/
 main2.py
+*.pt
