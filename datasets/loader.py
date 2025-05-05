@@ -25,14 +25,14 @@ def _load_cifar(cfg):
     return ds, objectives, ds.classes, class_indices
 
 def _load_amazon(cfg):
-    csv_path = Path(cfg.amazon_path)  
-    df = pd.read_csv(csv_path)
+    csv_path = Path(cfg.amazon_path)
+    df = pd.read_csv(csv_path, header=0)
 
-    #filter
-    df = df[["userId", "productId", "rating", "timestamp"]]
+    df = df.iloc[:, :4]
+    df.columns = ["userId", "productId", "rating", "timestamp"]
 
     objectives = {}
-    class_names = df["productId"].unique().tolist()
+    class_names  = df["productId"].unique().tolist()
     class_indices = {p: i for i, p in enumerate(class_names)}
     return df, objectives, class_names, class_indices
 
@@ -40,5 +40,5 @@ DATASET_FACTORY = {
     "COCO": _load_coco,
     "CIFAR-10": _load_cifar,
     "CIFAR-100": _load_cifar,
-    "AMAZON-REVIEWS": _load_amazon
+    "AMAZON": _load_amazon
 }
