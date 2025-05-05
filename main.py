@@ -40,25 +40,13 @@ from datasets.loader import DATASET_FACTORY
 from models.backbone_factory import make_backbone
 from utils.encoding import encode_dataset
 
+from baselines.random.random_baseline import RandomBaseline
+
 GFN_FACTORY = {
     "classical": GFlowNetMulticlass,
     "binary": BinaryPreferenceGFlowNet,
     "dpo": PreferenceGFlowNet,
 }
-
-def random_baseline(embeddings, labels_or_anns, reward_fn, objectives, class_indices, subset_size, device, iters, batch):
-    if isinstance(labels_or_anns, torch.Tensor):
-        labels_or_anns = labels_or_anns.to(device)
-    rewards = []
-    rewards = []
-    for _ in range(iters):
-        batch_rewards = []
-        for _ in range(batch):
-            idx = torch.randint(0, len(embeddings), (subset_size,), device=device)
-            r = reward_fn(idx.unsqueeze(0), labels_or_anns, objectives, class_indices)
-            batch_rewards.append(r.item())
-        rewards.append(float(np.mean(batch_rewards)))
-    return list(range(1, iters + 1)), rewards
 
 def train_head(name: str, cfg, embeddings, meta, objectives, class_indices, reward_fn):
     ModelCls = GFN_FACTORY[name]
@@ -88,6 +76,22 @@ def evaluate_bandit(policy, embeddings, meta, reward_fn,
         total += float(r)
     return {"Reward Mean": total / n_trials}
 
+def random_baseline(embeddings, labels_or_anns, reward_fn,
+                    objectives, class_indices,
+                    subset_size, device, iters, batch):
+    rewards = []
+    for _ in range(iters):
+        batch_rewards = []
+        for _ in range(batch):
+            idx = torch.randint(0, len(embeddings),
+                                (subset_size,), device=device)
+            r = reward_fn(idx.unsqueeze(0),
+                          labels_or_anns,
+                          objectives,
+                          class_indices)
+            batch_rewards.append(r.item())
+        rewards.append(float(np.mean(batch_rewards)))
+    return list(range(1, iters + 1)), rewards
 
 def evaluate_head(name, trainer, model, embeddings, meta, cfg, objectives, cat_map, class_indices, class_names, ds):
     if cfg.dataset == "COCO":
@@ -152,6 +156,7 @@ def main():
         "binary": cfg.preference_binary_gflownet or cfg.all,
         "dpo": cfg.preference_dpo_gflownet or cfg.all,
         "bandit": cfg.MAB,
+        "random": cfg.random_baseline
     }
 
     METHOD_DISPATCH = {
@@ -186,12 +191,21 @@ def main():
                 cfg.subset_size
             )
         ),
+        "random": (
+            lambda: random_baseline(
+                embeddings, meta, reward_fn, objectives, class_indices,
+                cfg.subset_size, DEVICE,
+                cfg.num_iterations, cfg.batch_size_train
+            ),
+            lambda x, y: {"Reward Mean": float(np.mean(y)) if y else 0.0}
+        ),
     }
 
     trained = {}
     trained_results = {}
     for name, (train_fn, eval_fn) in METHOD_DISPATCH.items():
         if active_methods[name]:
+            cfg.out_dir = f"baselines/{name}"
             trained[name], trained_results[name] = train_fn()
 
     metrics_map = {}
@@ -212,38 +226,38 @@ def main():
             trainers[name], models[name] = train_head(name, cfg, embeddings, meta, objectives,
                                                       class_indices, reward_fn)
 
-    rand_x, rand_y = random_baseline(embeddings, meta, reward_fn, objectives, class_indices,
-                                     cfg.subset_size, DEVICE, cfg.num_iterations,
-                                     cfg.batch_size_train)
+    # rand_x, rand_y = random_baseline(embeddings, meta, reward_fn, objectives, class_indices,
+    #                                  cfg.subset_size, DEVICE, cfg.num_iterations,
+    #                                  cfg.batch_size_train)
 
-    metrics_map = {}
-    for name, trainer in trainers.items():
-        m = evaluate_head(name, trainer, models[name], embeddings, meta, cfg,
-                          objectives, cat_map, class_indices, class_names, ds)
-        seqs = sample_many_sequences(models[name], embeddings, 5, cfg.subset_size, DEVICE, top_k=False)
-        m["Sequence Entropy"] = measure_sequence_diversity_from_list(seqs)
-        m["Image Entropy"] = measure_image_diversity_from_list(seqs)
-        metrics_map[name] = m
+    # metrics_map = {}
+    # for name, trainer in trainers.items():
+    #     m = evaluate_head(name, trainer, models[name], embeddings, meta, cfg,
+    #                       objectives, cat_map, class_indices, class_names, ds)
+    #     seqs = sample_many_sequences(models[name], embeddings, 5, cfg.subset_size, DEVICE, top_k=False)
+    #     m["Sequence Entropy"] = measure_sequence_diversity_from_list(seqs)
+    #     m["Image Entropy"] = measure_image_diversity_from_list(seqs)
+    #     metrics_map[name] = m
 
-    log_comparison(metrics_map)
+    # log_comparison(metrics_map)
 
-    if {"classical", "dpo"}.issubset(metrics_map):
-        plot_comparison(trainers["classical"].iterations_classical,
-                        trainers["classical"].reward_vs_images_classical,
-                        trainers["dpo"].iterations_comparison,
-                        trainers["dpo"].reward_vs_images_comparison,
-                        rand_x, rand_y, max_reward=None,
-                        title="Images seen vs Reward",
-                        x_label="Images", y_label="Reward",
-                        wandb_key="RewardVsImages")
-        plot_comparison_iterations(trainers["classical"].iterations_classical,
-                                   trainers["classical"].reward_vs_images_classical,
-                                   trainers["dpo"].iterations_comparison,
-                                   trainers["dpo"].reward_vs_images_comparison,
-                                   rand_x, rand_y, max_reward=None,
-                                   title="Iterations vs Reward",
-                                   x_label="Iter", y_label="Reward",
-                                   wandb_key="RewardVsIter")
+    # if {"classical", "dpo"}.issubset(metrics_map):
+    #     plot_comparison(trainers["classical"].iterations_classical,
+    #                     trainers["classical"].reward_vs_images_classical,
+    #                     trainers["dpo"].iterations_comparison,
+    #                     trainers["dpo"].reward_vs_images_comparison,
+    #                     rand_x, rand_y, max_reward=None,
+    #                     title="Images seen vs Reward",
+    #                     x_label="Images", y_label="Reward",
+    #                     wandb_key="RewardVsImages")
+    #     plot_comparison_iterations(trainers["classical"].iterations_classical,
+    #                                trainers["classical"].reward_vs_images_classical,
+    #                                trainers["dpo"].iterations_comparison,
+    #                                trainers["dpo"].reward_vs_images_comparison,
+    #                                rand_x, rand_y, max_reward=None,
+    #                                title="Iterations vs Reward",
+    #                                x_label="Iter", y_label="Reward",
+    #                                wandb_key="RewardVsIter")
 
     plot_umap_for_sequences(cfg, DEVICE, embeddings,
                             trainers.get("classical").model if "classical" in trainers else None,
