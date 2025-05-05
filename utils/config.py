@@ -41,7 +41,7 @@ def get_config():
     # mode
     parser.add_argument('--it', action='store_true', help='Enable interactive mode with human feedback')
 
-    args = parser.parse_args()
+    args, _ = parser.parse_known_args()
     
     target_classes = dict(item.split(":") for item in args.target_classes.split(","))
     target_classes = {k: int(v) for k, v in target_classes.items()}
