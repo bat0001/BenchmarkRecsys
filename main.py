@@ -1,19 +1,14 @@
+import torch
+import wandb
+import argparse
+import numpy as np
+import torch.optim as optim
+
+from typing import Dict
+from wandb import Table 
+from tabulate import tabulate
 from __future__ import annotations
 
-import argparse
-import random
-from pathlib import Path
-from typing import Dict, Tuple, Any
-
-import numpy as np
-import torch
-import torch.optim as optim
-import wandb
-from torch.utils.data import DataLoader
-
-from datasets.datasets import prepare_dataset
-from models.vae import VAE
-from models.convnext_tiny_custom import ConvNextTiny, ConvNeXtTinyEncoder
 from models.gflownet_classical import GFlowNetMulticlass
 from models.gflownet_binary_preference import BinaryPreferenceGFlowNet
 from models.gflownet_dpo_preference import PreferenceGFlowNet
@@ -21,11 +16,7 @@ from trainers.gflownet_trainer import GFlowNetTrainer
 from utils.config import get_config
 from utils.seed import set_seed
 from utils.logger import init_wandb_, log_recommendations_coco, log_recommendations_to_wandb
-from utils.filter import filter_dataset_all_classes, filter_coco_inplace
-from utils.utils_coco import (
-    build_cat_name_to_id_map, parse_objectives_coco,
-    coco_collate_fn_keep_target_with_index,
-)
+from utils.utils_coco import build_cat_name_to_id_map
 from utils.rewards import build_reward_fn
 from utils.visualization import (
     compute_image_selection_probabilities,
@@ -43,8 +34,7 @@ from utils.metrics import (
 )
 from utils.sampling import sample_many_sequences
 from utils.device import DEVICE
-from tabulate import tabulate
-from wandb import Table 
+
 from datasets.loader import DATASET_FACTORY
 from models.backbone_factory import make_backbone
 from utils.encoding import encode_dataset
@@ -54,7 +44,6 @@ GFN_FACTORY = {
     "binary": BinaryPreferenceGFlowNet,
     "dpo": PreferenceGFlowNet,
 }
-
 
 def random_baseline(embeddings, labels_or_anns, reward_fn, objectives, class_indices, subset_size, device, iters, batch):
     if isinstance(labels_or_anns, torch.Tensor):
