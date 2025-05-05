@@ -1,3 +1,8 @@
+
+import pandas as pd
+
+from pathlib import Path
+
 from datasets.datasets import prepare_dataset
 from utils.filter import filter_dataset_all_classes, filter_coco_inplace
 from utils.utils_coco import parse_objectives_coco
@@ -19,8 +24,21 @@ def _load_cifar(cfg):
     class_indices = {n: ds.classes.index(n) for n in objectives}
     return ds, objectives, ds.classes, class_indices
 
+def _load_amazon(cfg):
+    csv_path = Path(cfg.amazon_path)  
+    df = pd.read_csv(csv_path)
+
+    #filter
+    df = df[["userId", "productId", "rating", "timestamp"]]
+
+    objectives = {}
+    class_names = df["productId"].unique().tolist()
+    class_indices = {p: i for i, p in enumerate(class_names)}
+    return df, objectives, class_names, class_indices
+
 DATASET_FACTORY = {
     "COCO": _load_coco,
     "CIFAR-10": _load_cifar,
     "CIFAR-100": _load_cifar,
+    "AMAZON-REVIEWS": _load_amazon
 }
