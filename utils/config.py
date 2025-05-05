@@ -24,8 +24,8 @@ def get_config():
                         help="Choose which model backbone to use: 'vae' or 'convnext'.")
 
     # weights & Biases 
-    parser.add_argument("--wandb_project", type=str, default="gflownet_comparison", help="Weights & Biases project name")
-    parser.add_argument("--wandb_run_name", type=str, default="classical_vs_comparison", help="Weights & Biases run name")
+    parser.add_argument("--wandb_project", type=str, default="BenchmarkRecSys", help="Weights & Biases project name")
+    parser.add_argument("--wandb_run_name", type=str, default="BenchmarkRecSys", help="Weights & Biases run name")
     parser.add_argument('--no_recommendation_logs', action='store_true',
                         help="Disable logging of image recommendations to WandB (to speed up logging)")
     parser.add_argument("--seed", type=int, default=42, help="Seed for reproducibility")

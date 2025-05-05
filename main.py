@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import torch
 import wandb
 import argparse
@@ -7,7 +9,6 @@ import torch.optim as optim
 from typing import Dict
 from wandb import Table 
 from tabulate import tabulate
-from __future__ import annotations
 
 from models.gflownet_classical import GFlowNetMulticlass
 from models.gflownet_binary_preference import BinaryPreferenceGFlowNet
