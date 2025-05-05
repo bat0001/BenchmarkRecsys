@@ -147,11 +147,15 @@ def main():
     ds, objectives, class_names, class_indices = DATASET_FACTORY[cfg.dataset](cfg)
     cat_map = build_cat_name_to_id_map(ds.coco) if cfg.dataset == "COCO" else None
 
-    backbone = make_backbone(cfg)
-    embeddings, meta = encode_dataset(backbone, ds, cfg)
-    if isinstance(meta, torch.Tensor):
-        meta = meta.to(DEVICE)  
-    wandb.log({"Embeddings/pool_size": len(embeddings)})
+    if cfg.dataset == "AMAZON":
+        embeddings = None
+        meta = ds
+    else:
+        backbone = make_backbone(cfg)
+        embeddings, meta = encode_dataset(backbone, ds, cfg)
+        if isinstance(meta, torch.Tensor):
+            meta = meta.to(DEVICE)
+        wandb.log({"Embeddings/pool_size": len(embeddings)})
 
     reward_fn = build_reward_fn(cfg, objectives, cat_map, class_indices)
 
