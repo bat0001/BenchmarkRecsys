@@ -43,7 +43,7 @@ from utils.metrics import (
 )
 from utils.sampling import sample_many_sequences
 from tabulate import tabulate
-from wandb import Table
+from wandb import Table 
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -56,48 +56,53 @@ import torch
 
 class LinUCB(BanditPolicy):
     def __init__(self, dim: int, alpha: float = 1.0, device="cpu"):
-        self.A = torch.eye(dim, device=device)        # d×d
-        self.b = torch.zeros(dim, device=device)      # d
+        self.A = torch.eye(dim, device=device)      
+        self.b = torch.zeros(dim, device=device)    
         self.alpha = alpha
         self.device = device
 
-    def _ucb(self, X):  # X: n×d
+    def _ucb(self, X): 
+        X = X.to(self.device)
         A_inv = torch.linalg.inv(self.A)
-        theta = A_inv @ self.b                       # d
-        means = X @ theta                            # n
-        vars = torch.sum(X @ A_inv * X, dim=1)       # n
+        theta = A_inv @ self.b                     
+        means = X @ theta                          
+        vars = torch.sum(X @ A_inv * X, dim=1)      
         return means + self.alpha * torch.sqrt(vars)
 
     @torch.no_grad()
     def select(self, contexts: torch.Tensor, k: int) -> torch.Tensor:
         """Greedy top‑k according to current UCB score."""
-        scores = self._ucb(contexts)                 # n
-        return torch.topk(scores, k=k).indices       # k
+        scores = self._ucb(contexts)          
+        topk = torch.topk(scores, k=k).indices     
+        return topk.to(contexts.device)     
 
     def update(self, chosen_ctx: torch.Tensor, reward: torch.Tensor):
         """chosen_ctx: k×d  – reward: scalaire ou (k,) broadcasté."""
         if reward.ndim == 0:
             reward = reward.expand(len(chosen_ctx))
         for x, r in zip(chosen_ctx, reward):
-            x = x.unsqueeze(1)                      # d×1
+            x = x.unsqueeze(1)                    
             self.A += x @ x.T
             self.b += r * x.squeeze()
 
 def train_bandit(policy: BanditPolicy,
                  embeddings: torch.Tensor,
                  labels_or_anns,
-                 reward_fn,            # même signature que GFN
+                 reward_fn,          
                  objectives, class_indices,
                  subset_size=4,
                  iters=10_000, batch=1):
+    embeddings = embeddings.to(policy.device)
+
     rewards_vs_iter = []
     for it in range(iters):
-        idx = policy.select(embeddings, subset_size)        # k idx
+        idx = policy.select(embeddings, subset_size)   
+     
         rew = reward_fn(idx.unsqueeze(0),
                         labels_or_anns,
                         objectives,
-                        class_indices)                      # tensor[1]
-        policy.update(embeddings[idx], rew)                 # online update
+                        class_indices)                      
+        policy.update(embeddings[idx], rew)                 
         if (it+1) % 100 == 0:
             rewards_vs_iter.append(rew.item())
     return rewards_vs_iter
@@ -265,10 +270,6 @@ def log_comparison(metrics_map: Dict[str, Dict[str, float]]):
     wandb.log({"Comparison": table})
     print(tabulate(table.data, headers=headers, tablefmt="github"))
 
-# ---------------------------------------------------------------------------
-# 8 ▸ MAIN -------------------------------------------------------------------
-# ---------------------------------------------------------------------------
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--it", action="store_true")
@@ -284,22 +285,19 @@ def main():
 
     backbone = make_backbone(cfg)
     embeddings, meta = encode_dataset(backbone, ds, cfg)
-    # Move labels tensor to GPU for non-COCO (avoid index device mismatch)
     if isinstance(meta, torch.Tensor):
         meta = meta.to(DEVICE)  
     wandb.log({"Embeddings/pool_size": len(embeddings)})
 
     reward_fn = build_reward_fn(cfg, objectives, cat_map, class_indices)
 
-    # Determine which methods to run: GFlowNet variants or MAB
     active_methods = {
         "classical": cfg.classical_gflownet or cfg.all,
         "binary": cfg.preference_binary_gflownet or cfg.all,
         "dpo": cfg.preference_dpo_gflownet or cfg.all,
-        "bandit": args.MAB,
+        "bandit": cfg.MAB,
     }
 
-    # Dispatch table: each method yields (trainer_or_policy, model_or_rewards)
     METHOD_DISPATCH = {
         "classical": (
             lambda: train_head("classical", cfg, embeddings, meta, objectives, class_indices, reward_fn),
@@ -314,36 +312,31 @@ def main():
             lambda t, m: evaluate_head("dpo", t, m, embeddings, meta, cfg, objectives, cat_map, class_indices, class_names, ds)
         ),
         "bandit": (
-            # returns (policy, rewards_list)
             lambda: (
-                LinUCB(embeddings.shape[1], alpha=cfg.bandit_alpha, device=DEVICE),
+                LinUCB(embeddings.shape[1], device=DEVICE),
                 train_bandit(
-                    LinUCB(embeddings.shape[1], alpha=cfg.bandit_alpha, device=DEVICE),
+                    LinUCB(embeddings.shape[1], device=DEVICE),
                     embeddings, meta, reward_fn, objectives, class_indices,
                     subset_size=cfg.subset_size,
                     iters=cfg.num_iterations,
                     batch=cfg.batch_size_train
                 )
             ),
-            # evaluate returns simple metrics dict
             lambda policy, rewards: {"Reward Mean": rewards[-1] if rewards else 0.0}
         ),
     }
 
-    # TRAIN all selected methods
     trained = {}
     trained_results = {}
     for name, (train_fn, eval_fn) in METHOD_DISPATCH.items():
         if active_methods[name]:
             trained[name], trained_results[name] = train_fn()
 
-    # EVALUATE all selected methods
     metrics_map = {}
     for name, (train_fn, eval_fn) in METHOD_DISPATCH.items():
         if active_methods[name]:
             metrics_map[name] = eval_fn(trained[name], trained_results[name])
 
-    # Log comparative table
     log_comparison(metrics_map)
 
     active_heads = {
