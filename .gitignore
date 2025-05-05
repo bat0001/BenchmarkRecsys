@@ -1,0 +1,8 @@
+__pycache__
+data/
+wandb/
+*.pth
+*.pyc
+experiments/check_proba/
+experiments/with_torchgfn/
+main2.py
