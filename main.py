@@ -40,8 +40,6 @@ from datasets.loader import DATASET_FACTORY
 from models.backbone_factory import make_backbone
 from utils.encoding import encode_dataset
 
-from baselines.random.random_baseline import RandomBaseline
-
 GFN_FACTORY = {
     "classical": GFlowNetMulticlass,
     "binary": BinaryPreferenceGFlowNet,
