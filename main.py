@@ -4,12 +4,13 @@ import torch
 import wandb
 import argparse
 import numpy as np
+import pandas as pd
 import torch.optim as optim
+import matplotlib.pyplot as plt
 
 from typing import Dict
 from wandb import Table 
 from tabulate import tabulate
-import matplotlib.pyplot as plt
 
 from models.gflownet_classical import GFlowNetMulticlass
 from models.gflownet_binary_preference import BinaryPreferenceGFlowNet
@@ -42,9 +43,13 @@ from models.backbone_factory import make_backbone
 from utils.encoding import encode_dataset
 
 from utils.plots import (
-    plot_reward_curves, plot_selection_overlap, plot_entropy_vs_reward
+    plot_reward_curves, plot_selection_overlap, plot_entropy_vs_reward, plot_fraction_relevant_curves
 )
 from baselines import BASELINE_REGISTRY
+from baselines.abtest.abtest_baseline import ABTestBaseline
+from baselines.ucb.ucb_baseline import UCBBaseline
+from baselines.bandit.utils import load_linucb
+from baselines.random.random_baseline import RandomBaseline
 
 GFN_FACTORY = {
     "classical": GFlowNetMulticlass,
@@ -69,7 +74,6 @@ def train_head(name: str, cfg, embeddings, meta, objectives, class_indices, rewa
                                             cfg.batch_size_train, wandb)
     return trainer, model
 
-from baselines.bandit.utils import load_linucb
 
 def evaluate_bandit(policy, embeddings, meta, reward_fn,
                     objectives, class_indices, subset_size, n_trials=1000):
@@ -80,22 +84,22 @@ def evaluate_bandit(policy, embeddings, meta, reward_fn,
         total += float(r)
     return {"Reward Mean": total / n_trials}
 
-def random_baseline(embeddings, labels_or_anns, reward_fn,
-                    objectives, class_indices,
-                    subset_size, device, iters, batch):
-    rewards = []
-    for _ in range(iters):
-        batch_rewards = []
-        for _ in range(batch):
-            idx = torch.randint(0, len(embeddings),
-                                (subset_size,), device=device)
-            r = reward_fn(idx.unsqueeze(0),
-                          labels_or_anns,
-                          objectives,
-                          class_indices)
-            batch_rewards.append(r.item())
-        rewards.append(float(np.mean(batch_rewards)))
-    return list(range(1, iters + 1)), rewards
+# def random_baseline(embeddings, labels_or_anns, reward_fn,
+#                     objectives, class_indices,
+#                     subset_size, device, iters, batch):
+#     rewards = []
+#     for _ in range(iters):
+#         batch_rewards = []
+#         for _ in range(batch):
+#             idx = torch.randint(0, len(embeddings),
+#                                 (subset_size,), device=device)
+#             r = reward_fn(idx.unsqueeze(0),
+#                           labels_or_anns,
+#                           objectives,
+#                           class_indices)
+#             batch_rewards.append(r.item())
+#         rewards.append(float(np.mean(batch_rewards)))
+#     return list(range(1, iters + 1)), rewards
 
 def evaluate_head(name, trainer, model, embeddings, meta, cfg, objectives, cat_map, class_indices, class_names, ds):
     if cfg.dataset == "COCO":
@@ -134,7 +138,9 @@ def log_comparison(metrics_map: Dict[str, Dict[str, float]]):
     wandb.log({"Comparison": table})
     print(tabulate(table.data, headers=headers, tablefmt="github"))
 
+
 def main():
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--it", action="store_true")
     parser.add_argument("--iterations", type=int, default=None)
@@ -157,132 +163,87 @@ def main():
             meta = meta.to(DEVICE)
         wandb.log({"Embeddings/pool_size": len(embeddings)})
 
+    baseline_data = (embeddings, meta) if embeddings is not None else ds
     reward_fn = build_reward_fn(cfg, objectives, cat_map, class_indices)
 
+    # ---------------------------------------------------------------- Activation flags
     active_methods = {
         "abtest":  cfg.abtest,
         "ucb":     cfg.ucb,
-        "bandit":  cfg.MAB,
+        "bandit":  (cfg.MAB and embeddings is not None),
         "random":  cfg.random_baseline,
     }
 
     METHOD_DISPATCH = {
-        "classical": (
-            lambda: train_head("classical", cfg, embeddings, meta, objectives, class_indices, reward_fn),
-            lambda t, m: evaluate_head("classical", t, m, embeddings, meta, cfg, objectives, cat_map, class_indices, class_names, ds)
+        "random": (
+            lambda: (RandomBaseline(cfg).offline_fit(baseline_data), None),
+            lambda bl, _: bl.online_simulate(cfg.num_iterations)
         ),
-        "binary": (
-            lambda: train_head("binary", cfg, embeddings, meta, objectives, class_indices, reward_fn),
-            lambda t, m: evaluate_head("binary", t, m, embeddings, meta, cfg, objectives, cat_map, class_indices, class_names, ds)
+        "abtest": (
+            lambda: (ABTestBaseline(cfg).offline_fit(ds), None),
+            lambda bl,_: bl.online_simulate(cfg.num_iterations)     
         ),
-        "dpo": (
-            lambda: train_head("dpo", cfg, embeddings, meta, objectives, class_indices, reward_fn),
-            lambda t, m: evaluate_head("dpo", t, m, embeddings, meta, cfg, objectives, cat_map, class_indices, class_names, ds)
+        "ucb": (
+            lambda: (UCBBaseline(cfg).offline_fit(ds), None),
+            lambda bl,_: bl.online_simulate(cfg.num_iterations)  
         ),
         "bandit": (
-            lambda: (
-                load_linucb(
-                    getattr(cfg, "bandit_ckpt", "baselines/bandit/linucb.pt"),
-                    dim=embeddings.shape[1],
-                    alpha=getattr(cfg, "bandit_alpha", 1.0)
-                ),
-                None
-            ),
-            lambda policy, _: evaluate_bandit(
-                policy,
-                embeddings,
-                meta,
-                reward_fn,
-                objectives,
-                class_indices,
-                cfg.subset_size
-            )
-        ),
-        "random": (
-            lambda: random_baseline(
-                embeddings, meta, reward_fn, objectives, class_indices,
-                cfg.subset_size, DEVICE,
-                cfg.num_iterations, cfg.batch_size_train
-            ),
-            lambda x, y: {"Reward Mean": float(np.mean(y)) if y else 0.0}
+            lambda: (load_linucb(
+                        getattr(cfg, "bandit_ckpt", "baselines/bandit/linucb.pt"),
+                        dim=embeddings.shape[1],
+                        alpha=getattr(cfg, "bandit_alpha", 1.0)
+                     ), None),
+            lambda pol,_: evaluate_bandit(                          
+                        pol, embeddings, meta, reward_fn,
+                        objectives, class_indices, cfg.subset_size)
         ),
     }
 
-    trained = {}
-    trained_results = {}
+    raw_results, metrics_map = {}, {}
+
     for name, (train_fn, eval_fn) in METHOD_DISPATCH.items():
-        if active_methods[name]:
-            cfg.out_dir = f"baselines/{name}"
-            trained[name], trained_results[name] = train_fn()
+        if not active_methods.get(name):
+            continue
+        cfg.out_dir = f"baselines/{name}"   
+        obj, _ = train_fn()                 
+        res    = eval_fn(obj, None)
+        
+        if isinstance(res, tuple):
+            metrics, raw = res
+            metrics_map[name] = metrics
+            raw_results[name] = raw
+        elif isinstance(res, list):
+            raw_results[name] = res
+            final = np.mean([r['fraction_relevant'] for r in res
+                              if r['visit'] == cfg.num_iterations-1])
+            metrics_map[name] = {"Reward Mean": float(final)}
+        else:
+            metrics_map[name] = res
 
-    metrics_map = {}
-    for name, (train_fn, eval_fn) in METHOD_DISPATCH.items():
-        if active_methods[name]:
-            metrics_map[name] = eval_fn(trained[name], trained_results[name])
+    log_comparison(metrics_map)
 
+    curves = {}
+    for name, recs in raw_results.items():
+        df = pd.DataFrame(recs)
 
+        if "fraction_relevant" not in df.columns and "fraction" in df.columns:
+            df = df.rename(columns={"fraction": "fraction_relevant"})
 
-    metrics_map = {}
-    histories   = {}                        # pour les plots reward‑curve
-
-    for name, active in active_methods.items():
-        if not active:
+        if "fraction_relevant" not in df.columns:
+            print(f"[WARN] '{name}' results have no fraction column -> skipped in plot")
             continue
 
-        cfg.out_dir = f"baselines/{name}"
+        avg = df.groupby("visit", as_index=False)["fraction_relevant"].mean()
+        
+        curves[name] = avg
+    print(f"[INFO] curves collected: {list(curves)}")
 
-        if name in {"abtest", "ucb"}:
-            BaselineCls = BASELINE_REGISTRY[name]
-            bl = BaselineCls(cfg)
-            bl.offline_fit(ds)                           
-            met = bl.online_simulate(cfg.num_iterations)
-            metrics_map[name] = met
-
-        elif name == "bandit":
-            linucb = load_linucb(
-                getattr(cfg, "bandit_ckpt", "baselines/bandit/linucb.pt"),
-                dim=embeddings.shape[1],
-                alpha=getattr(cfg, "bandit_alpha", 1.0)
-            )
-            met = evaluate_bandit(
-                linucb, embeddings, meta, reward_fn,
-                objectives, class_indices, cfg.subset_size
-            )
-            metrics_map[name] = met
-
-        elif name == "random":
-            _, ys = random_baseline(
-                embeddings, meta, reward_fn, objectives, class_indices,
-                cfg.subset_size, DEVICE, cfg.num_iterations, cfg.batch_size_train
-            )
-            metrics_map[name] = {"Reward Mean": float(np.mean(ys))}
-            histories[name] = ys
-
-
-#    log_comparison(metrics_map)
-
-    # if cfg.plots:
-    #     histories = {
-    #     name: res
-    #     for name, res in trained_results.items()
-    #     if isinstance(res, list) and len(res) > 0
-    #     }
-    #     if histories:
-    #         fig = plot_reward_curves(histories, "Reward vs Iterations")
-    #         wandb.log({"Plots/RewardCurves": wandb.Image(fig)})
-    #         plt.close(fig)
-
-    #     if {"bandit", "random"}.issubset(trained):
-    #         idx_bandit = trained["bandit"].select(embeddings, cfg.subset_size)
-    #         rand_idx   = torch.randperm(len(embeddings))[:cfg.subset_size].to(DEVICE)
-    #         fig = plot_selection_overlap(idx_bandit.cpu(), rand_idx.cpu(), len(embeddings))
-    #         wandb.log({"Plots/Overlap": wandb.Image(fig)})
-    #         plt.close(fig)
-
-    #     fig = plot_entropy_vs_reward(metrics_map)
-    #     wandb.log({"Plots/DiversityVsReward": wandb.Image(fig)})
-    #     plt.close(fig)
-
+    if curves:
+        fig = plot_fraction_relevant_curves(curves)
+        wandb.log({"Plots/FractionRelevant": wandb.Image(fig)})
+        plt.close(fig)
+    else:
+        print("[INFO] No curves to plot.")
     wandb.finish()
 
 if __name__ == "__main__":
