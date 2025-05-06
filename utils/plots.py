@@ -1,8 +1,9 @@
-# utils/plots.py
-import matplotlib.pyplot as plt
-import numpy as np
+import itertools
 import torch
 import wandb
+import numpy as np
+import matplotlib.pyplot as plt
+
 
 def plot_reward_curves(histories: dict[str, list[float]], title: str):
     """
@@ -55,4 +56,59 @@ def plot_entropy_vs_reward(metrics_map: dict[str, dict[str, float]]):
     ax.set_ylabel("Reward Mean")
     ax.set_title("Diversity vs Quality")
     ax.grid(True, alpha=.3)
+    return fig
+
+
+_DEFAULT_STYLES = ["r-", "g--", "b-.", "c:", "m-", "y--", "k-"]
+
+def plot_fraction_relevant_curves(
+    curves: dict[str, "pd.DataFrame"],
+    *,
+    labels: dict[str, str] | None = None,
+    styles: dict[str, str] | None = None,
+    title: str = "Percentage of Liked Recommendations",
+    xlabel: str = "Recommendation #",
+    ylabel: str = "% of Recs Clicked",
+    figsize: tuple[int, int] = (12, 10),
+) -> plt.Figure:
+    """
+    Plot fraction_relevant vs visit for an arbitrary number of baselines.
+
+    Parameters
+    ----------
+    curves  : mapping name -> DataFrame with columns ['visit', 'fraction_relevant']
+    labels  : optional mapping name -> legend label (defaults to `name`)
+    styles  : optional mapping name -> matplotlib linestyle (defaults to cyclic palette)
+    title   : figure title
+    xlabel  : x‑axis label
+    ylabel  : y‑axis label (displayed as percentage)
+    figsize : figure size
+
+    Returns
+    -------
+    fig : matplotlib Figure
+    """
+    labels = labels or {}
+    styles = styles or {}
+
+    style_cycle = itertools.cycle(_DEFAULT_STYLES)
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    for name, df in curves.items():
+        style = styles.get(name, next(style_cycle))
+        lbl   = labels.get(name, name)
+        ax.plot(df["visit"], df["fraction_relevant"],
+                style, linewidth=3.0, label=lbl)
+
+    ax.set_title(title)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+
+    # convert y‑ticks to %
+    ticks = ax.get_yticks()
+    ax.set_yticklabels((ticks * 100).astype(int))
+
+    ax.legend(loc="lower right")
+    plt.tight_layout()
     return fig
