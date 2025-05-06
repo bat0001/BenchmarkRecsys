@@ -12,16 +12,23 @@ class UCBBaseline(BaseBaseline):
         self.df = data
         return self
 
-    def online_simulate(self, *_):
+    def online_simulate(self, n_visits: int, *, return_raw: bool = False):
         sim = UCBSamplingReplayer(
             ucb_c=self.cfg.ucb_c,
-            n_visits=self.cfg.num_iterations,
+            n_visits=n_visits,
             reward_history=self.df,
             item_col_name="productId",
             visitor_col_name="userId",
             reward_col_name="rating",
-            n_iterations=1
+            n_iterations=1,
         )
-        res = sim.simulator()
-        rewards = [r["reward"] for r in res if r["visit"] == self.cfg.num_iterations - 1]
-        return {"Reward Mean": float(np.mean(rewards))}
+        raw = sim.simulator()
+        if return_raw:
+            return raw
+
+        final_vals = [
+            r.get("fraction_relevant", r.get("fraction"))
+            for r in raw if r["visit"] == n_visits - 1
+        ]
+        metrics = {"Reward Mean": float(np.mean(final_vals))}
+        return metrics, raw
