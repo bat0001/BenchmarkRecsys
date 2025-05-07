@@ -55,7 +55,9 @@ def get_config():
     parser.add_argument('--ucb',    action='store_true')
     parser.add_argument('--abtest_n_test', type=int, default=1000)
     parser.add_argument('--ucb_c',  type=float, default=2.0)
-
+    parser.add_argument('--thompson', action='store_true',
+                    help="Activate Thompson Sampling baseline")
+    
     # plots
     parser.add_argument(
         "--plots", action="store_true",
