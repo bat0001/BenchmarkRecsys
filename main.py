@@ -50,6 +50,7 @@ from baselines.abtest.abtest_baseline import ABTestBaseline
 from baselines.ucb.ucb_baseline import UCBBaseline
 from baselines.bandit.utils import load_linucb
 from baselines.random.random_baseline import RandomBaseline
+from baselines.thompson.baseline import ThompsonBaseline
 
 GFN_FACTORY = {
     "classical": GFlowNetMulticlass,
@@ -156,6 +157,7 @@ def main():
     if cfg.dataset == "AMAZON":
         embeddings = None
         meta = ds
+        
     else:
         backbone = make_backbone(cfg)
         embeddings, meta = encode_dataset(backbone, ds, cfg)
@@ -170,6 +172,7 @@ def main():
         "abtest":  cfg.abtest,
         "ucb":     cfg.ucb,
         "bandit":  (cfg.MAB and embeddings is not None),
+        "thompson": cfg.thompson,
         "random":  cfg.random_baseline,
     }
 
@@ -185,6 +188,10 @@ def main():
         "ucb": (
             lambda: (UCBBaseline(cfg).offline_fit(ds), None),
             lambda bl,_: bl.online_simulate(cfg.num_iterations)  
+        ),
+        "thompson": (
+            lambda: (ThompsonBaseline(cfg).offline_fit(ds), None),
+            lambda bl,_: bl.online_simulate(cfg.num_iterations)
         ),
         "bandit": (
             lambda: (load_linucb(
