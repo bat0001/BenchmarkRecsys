@@ -166,7 +166,6 @@ def main():
     baseline_data = (embeddings, meta) if embeddings is not None else ds
     reward_fn = build_reward_fn(cfg, objectives, cat_map, class_indices)
 
-    # ---------------------------------------------------------------- Activation flags
     active_methods = {
         "abtest":  cfg.abtest,
         "ucb":     cfg.ucb,
