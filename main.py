@@ -9,7 +9,7 @@ import torch.optim as optim
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
-from typing import Dict
+from typing import Dict, List, Tuple
 from wandb import Table 
 from tabulate import tabulate
 
@@ -196,6 +196,61 @@ def run_thompson_sampling(
     mean_final_ctr = float(np.mean(final_ctrs))
     return all_results, mean_final_ctr
 
+def run_ucb_sampling(
+    df: pd.DataFrame,
+    *,
+    item_col: str = "productId",
+    reward_col: str = "reward",      # 0 / 1
+    n_visits: int = 5_000,
+    n_iterations: int = 10,
+    ucb_c: float = 2.0,
+) -> Tuple[List[Dict], float]:
+    """
+    Offline‑replay Upper‑Confidence‑Bound (Auer 2002) :
+
+        UCB_i(t) = Q_i(t) + c * sqrt( ln t / N_i(t) )
+
+    Returns
+    -------
+    raw_records : list[dict]  (∀ visit, ∀ iteration)
+    mean_final_ctr : CTR moyen au dernier visit, moyenné sur les runs
+    """
+    rng = np.random.default_rng()
+
+    items   = df[item_col].unique()
+    n_items = len(items)
+
+    bank = [df.loc[df[item_col] == it, reward_col].to_numpy(np.int8)
+            for it in items]
+
+    all_results, final_ctrs = [], []
+
+    for it in tqdm(range(n_iterations), desc="[UCB] run"):
+        Q = np.zeros(n_items, dtype=np.float64)     
+        N = np.zeros(n_items, dtype=np.int64)       
+        cum = 0.0
+
+        for v in range(1, n_visits + 1):
+            conf  = ucb_c * np.sqrt(np.log(v) / np.maximum(1, N))
+            idx   = int(np.argmax(Q + conf))
+            rwd   = int(rng.choice(bank[idx]))
+
+            N[idx] += 1
+            Q[idx] += (rwd - Q[idx]) / N[idx]
+
+            cum += rwd
+            all_results.append({
+                "iteration": it,
+                "visit": v-1,
+                "item_idx": idx,
+                "reward": rwd,
+                "fraction_relevant": cum / v,
+            })
+
+        final_ctrs.append(cum / n_visits)
+
+    return all_results, float(np.mean(final_ctrs))
+
 
 def main():
 
@@ -225,13 +280,15 @@ def main():
             meta = meta.to(DEVICE)
         wandb.log({"Embeddings/pool_size": len(embeddings)})
     
-    if cfg.dataset == "AMAZON" and cfg.simple_ts:
-        if "reward" not in ds.columns:
-            ds["reward"] = (ds["rating"] > cfg.reward_threshold).astype(int)
+    if "reward" not in ds.columns:
+        ds["reward"] = (ds["rating"] > cfg.reward_threshold).astype(int)
 
-        ds_filtered = filter_df_for_bandit(ds, item_col="productId",
-                                       reward_col="reward",
-                                       min_pos=5, max_items=50)
+    ds_filtered = filter_df_for_bandit(ds, item_col="productId",
+                                    reward_col="reward",
+                                    min_pos=5, max_items=50)
+
+    if cfg.dataset == "AMAZON" and cfg.simple_ts:
+        
         assert set(ds_filtered["reward"].unique()).issubset({0, 1})
         ts_raw, ts_ctr = run_thompson_sampling(
             ds_filtered,
@@ -249,6 +306,17 @@ def main():
             "Reward Min": float(np.min([x["reward"] for x in ts_raw])),
         }
         raw_results["simple_ts"] = ts_raw
+    if cfg.dataset == "AMAZON" and cfg.simple_ucb:
+        ucb_raw, ucb_ctr = run_ucb_sampling(
+            ds_filtered,
+            item_col     = "productId",
+            reward_col   = "reward",
+            n_visits     = 5000,
+            n_iterations = 1000, 
+            ucb_c        = cfg.ucb_c,
+        )
+        metrics_map["simple_ucb"] = {"Reward Mean": ucb_ctr}
+        raw_results["simple_ucb"] = ucb_raw
 
     baseline_data = (embeddings, meta) if embeddings is not None else ds
     reward_fn = build_reward_fn(cfg, objectives, cat_map, class_indices)
@@ -327,12 +395,9 @@ def main():
             ctr_curves[nm] = ctr_avg
 
         if "reward" in df.columns:
-            # On garde les rewards bruts (par visit)
             df_sorted = df.sort_values(["iteration", "visit"])
             grouped = df_sorted.groupby("visit", as_index=False)
-            # reward moyen par timestep (across iterations)
             avg_reward_per_step = grouped["reward"].mean()
-            # reconstruction cumulative
             avg_reward_per_step["cumulative_reward"] = avg_reward_per_step["reward"].cumsum()
             regret_curves[nm] = avg_reward_per_step.rename(columns={"cumulative_reward": "cum_reward"})
 
@@ -349,7 +414,6 @@ def main():
 
     if regret_curves:
         item_ctr = ds_filtered.groupby("productId")["reward"].mean()
-        print(item_ctr.sort_values(ascending=False).tail(10))
         best_ctr = item_ctr.max()
         fig_regret = plot_cumulative_regret(regret_curves, best_ctr, styles, labels)
         wandb.log({"Plots/Regret": wandb.Image(fig_regret)})
