@@ -1,35 +1,92 @@
 import numpy as np
+import pandas as pd
+from tqdm import tqdm
+from typing import List, Dict, Tuple
+
 from baselines.core.baseline import BaseBaseline
-from baselines.thompson.replayer import ThompsonSamplingReplayer
 
 
 class ThompsonBaseline(BaseBaseline):
-    """Wrapper baseline for Thompson‑Sampling replayer."""
+    """
+    Pure‑numpy Thompson‑Sampling replay (offline).
+    Keeps everything in CPU numpy → ultra‑light & portable.
+    """
 
     def _build_model(self):
         return None
 
-    def offline_fit(self, data):
-        self.df = data
-        return self
+    def offline_fit(
+        self,
+        df: pd.DataFrame,
+        *,
+        item_col: str = "productId",
+        reward_col: str = "reward",
+        min_pos: int = 5,
+        max_items: int = 10_000,
+    ):
+        """
+        Pre‑compute the ‘bank’ of historical rewards for each item.
+        Filtering happens here (≥ min_pos clicks & ≤ max_items items).
+        """
+        pos = df[df[reward_col] == 1][item_col].value_counts()
+        keep = pos[pos >= min_pos].index[:max_items]
+        df   = df[df[item_col].isin(keep)].copy()
 
-    def online_simulate(self, n_visits: int, *, return_raw: bool = False):
-        sim = ThompsonSamplingReplayer(
-            n_visits=n_visits,
-            reward_history=self.df,
-            item_col_name="productId",
-            visitor_col_name="userId",
-            reward_col_name="rating",
-            n_iterations=1,
-        )
-        raw = sim.simulator()
-        if return_raw:
-            return raw
+        self.item_col   = item_col
+        self.reward_col = reward_col
 
-        final_vals = [
-            r.get("fraction_relevant", r.get("fraction"))
-            for r in raw
-            if r["visit"] == n_visits - 1
+        self.items      = df[item_col].unique()
+        self.n_items    = len(self.items)
+
+        self.reward_bank: list[np.ndarray] = [
+            df.loc[df[item_col] == it, reward_col].to_numpy(np.int8)
+            for it in self.items
         ]
-        metrics = {"Reward Mean": float(np.mean(final_vals))}
-        return metrics, raw
+        return self  
+
+    def online_simulate(
+        self,
+        n_visits: int = 1000,
+        *,
+        n_iterations: int | None = None,
+        return_raw: bool = False,
+    ):
+        """
+        Run the replay loop and return either:
+          • a metrics dict   (default)
+          • (metrics, raw_records)   if return_raw=True
+        """
+        n_iter = n_iterations or self.cfg.num_iterations
+        rng    = np.random.default_rng(self.cfg.seed)
+
+        results: List[Dict] = []
+        final_ctrs: list[float] = []
+
+        for it in tqdm(range(n_iter), desc="[TS] run"):
+            alpha = np.ones(self.n_items, dtype=np.float64)
+            beta  = np.ones_like(alpha)
+
+            cum = 0.0
+            for v in range(n_visits):
+                theta = rng.beta(alpha, beta)
+                idx   = int(np.argmax(theta))
+
+                rwd   = int(rng.choice(self.reward_bank[idx]))
+                if rwd == 1:
+                    alpha[idx] += 1.0
+                else:
+                    beta[idx]  += 1.0
+
+                cum += rwd
+                results.append({
+                    "iteration": it,
+                    "visit":     v,
+                    "item_idx":  idx,
+                    "reward":    rwd,
+                    "fraction_relevant": cum / (v + 1),
+                })
+
+            final_ctrs.append(cum / n_visits)
+
+        metrics = {"Reward Mean": float(np.mean(final_ctrs))}
+        return (metrics, results) if return_raw else metrics
