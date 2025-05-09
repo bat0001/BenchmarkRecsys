@@ -51,13 +51,24 @@ def get_config():
 
     parser.add_argument("--amazon_path", type=str, default="data/amazon.csv",
                     help="Chemin vers le CSV Amazon Reviews")
+    parser.add_argument(
+        "--amazon_subset",
+        type=int,
+        default=None,
+        help="If set, keep only this many rows from the Amazon CSV (random sample).",
+    )
     parser.add_argument('--abtest', action='store_true')
     parser.add_argument('--ucb',    action='store_true')
     parser.add_argument('--abtest_n_test', type=int, default=1000)
     parser.add_argument('--ucb_c',  type=float, default=2.0)
     parser.add_argument('--thompson', action='store_true',
                     help="Activate Thompson Sampling baseline")
-    
+    parser.add_argument('--epsilon', type=float, default=0.1,
+                    help="ε value for ε‑greedy")
+    parser.add_argument('--epsilon_greedy', action='store_true',
+                    help="Run ε‑greedy baseline")
+    parser.add_argument("--simple_ts", action="store_true",
+                    help="Run the minimal Thompson‑Sampling baseline")
     # plots
     parser.add_argument(
         "--plots", action="store_true",
