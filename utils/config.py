@@ -69,6 +69,8 @@ def get_config():
                     help="Run ε‑greedy baseline")
     parser.add_argument("--simple_ts", action="store_true",
                     help="Run the minimal Thompson‑Sampling baseline")
+    parser.add_argument("--simple_ucb", action="store_true",
+                    help="Run the minimal UCB baseline")
     # plots
     parser.add_argument(
         "--plots", action="store_true",
