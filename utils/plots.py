@@ -1,4 +1,4 @@
-import itertools
+from __future__ import annotations
 import torch
 import wandb
 import numpy as np
@@ -61,54 +61,127 @@ def plot_entropy_vs_reward(metrics_map: dict[str, dict[str, float]]):
 
 _DEFAULT_STYLES = ["r-", "g--", "b-.", "c:", "m-", "y--", "k-"]
 
+# def plot_fraction_relevant_curves(
+#     curves: dict[str, "pd.DataFrame"],
+#     *,
+#     labels: dict[str, str] | None = None,
+#     styles: dict[str, str] | None = None,
+#     title: str = "Percentage of Liked Recommendations",
+#     xlabel: str = "Recommendation #",
+#     ylabel: str = "% of Recs Clicked",
+#     figsize: tuple[int, int] = (12, 10),
+# ) -> plt.Figure:
+#     """
+#     Plot fraction_relevant vs visit for an arbitrary number of baselines.
+
+#     Parameters
+#     ----------
+#     curves  : mapping name -> DataFrame with columns ['visit', 'fraction_relevant']
+#     labels  : optional mapping name -> legend label (defaults to `name`)
+#     styles  : optional mapping name -> matplotlib linestyle (defaults to cyclic palette)
+#     title   : figure title
+#     xlabel  : x‑axis label
+#     ylabel  : y‑axis label (displayed as percentage)
+#     figsize : figure size
+
+#     Returns
+#     -------
+#     fig : matplotlib Figure
+#     """
+#     labels = labels or {}
+#     styles = styles or {}
+
+#     style_cycle = itertools.cycle(_DEFAULT_STYLES)
+
+#     fig, ax = plt.subplots(figsize=figsize)
+
+#     for name, df in curves.items():
+#         style = styles.get(name, next(style_cycle))
+#         lbl   = labels.get(name, name)
+#         ax.plot(df["visit"], df["fraction_relevant"],
+#                 style, linewidth=3.0, label=lbl)
+
+#     ax.set_title(title)
+#     ax.set_xlabel(xlabel)
+#     ax.set_ylabel(ylabel)
+
+#     # convert y‑ticks to %
+#     ticks = ax.get_yticks()
+#     ax.set_yticklabels((ticks * 100).astype(int))
+
+#     ax.legend(loc="lower right")
+#     plt.tight_layout()
+#     return fig
+
+import matplotlib.pyplot as plt
+import pandas as pd
+from typing import Dict
+
 def plot_fraction_relevant_curves(
-    curves: dict[str, "pd.DataFrame"],
+    curves : Dict[str, pd.DataFrame],
+    styles : Dict[str, str],
+    labels : Dict[str, str],
     *,
-    labels: dict[str, str] | None = None,
-    styles: dict[str, str] | None = None,
-    title: str = "Percentage of Liked Recommendations",
-    xlabel: str = "Recommendation #",
-    ylabel: str = "% of Recs Clicked",
-    figsize: tuple[int, int] = (12, 10),
+    title      = "Percentage of Liked Recommendations",
+    xlabel     = "Recommendation #",
+    ylabel_pct = "% of Recs Clicked",
+    figsize    = (12, 10)
 ) -> plt.Figure:
-    """
-    Plot fraction_relevant vs visit for an arbitrary number of baselines.
-
-    Parameters
-    ----------
-    curves  : mapping name -> DataFrame with columns ['visit', 'fraction_relevant']
-    labels  : optional mapping name -> legend label (defaults to `name`)
-    styles  : optional mapping name -> matplotlib linestyle (defaults to cyclic palette)
-    title   : figure title
-    xlabel  : x‑axis label
-    ylabel  : y‑axis label (displayed as percentage)
-    figsize : figure size
-
-    Returns
-    -------
-    fig : matplotlib Figure
-    """
-    labels = labels or {}
-    styles = styles or {}
-
-    style_cycle = itertools.cycle(_DEFAULT_STYLES)
-
+    """Plot avg(fraction_relevant) vs visit for an arbitrary set of baselines."""
     fig, ax = plt.subplots(figsize=figsize)
 
     for name, df in curves.items():
-        style = styles.get(name, next(style_cycle))
-        lbl   = labels.get(name, name)
+        if df.empty:             
+            continue
         ax.plot(df["visit"], df["fraction_relevant"],
-                style, linewidth=3.0, label=lbl)
+                styles.get(name, "-"), linewidth=3.5,
+                label=labels.get(name, name))
+
+    ax.set_title(title)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel_pct)
+
+    yticks = ax.get_yticks()
+    ax.set_yticklabels((yticks * 100).astype(int))  
+    ax.legend(loc="lower right")
+    plt.tight_layout()
+    return fig
+
+def plot_cumulative_regret(
+    curves      : Dict[str, pd.DataFrame],
+    best_ctr    : float,
+    styles      : Dict[str, str],
+    labels      : Dict[str, str],
+    *,
+    title   = "Cumulative Regret",
+    xlabel  = "Recommendation #",
+    ylabel  = "Regret",
+    figsize = (12, 8)
+) -> plt.Figure:
+    """
+    best_ctr       : Best empirical per‑visit CTR among baselines (scalar)
+    Cumulative reward_t = Σ_{s=0..t} reward_s
+                        = CTR_t * (t+1)
+    Regret_t            = (t+1)*best_ctr  -  cumulative_reward_t
+    """
+    fig, ax = plt.subplots(figsize=figsize)
+
+    for name, df in curves.items():
+        if df.empty:
+            continue
+
+        t      = df["visit"].to_numpy()            
+        ctr_t  = df["fraction_relevant"].to_numpy() 
+        cum_rw = ctr_t * (t + 1)                     
+
+        regret = (t + 1) * best_ctr - cum_rw
+        ax.plot(t, regret,
+                styles.get(name, "-"), linewidth=2.5,
+                label=labels.get(name, name))
 
     ax.set_title(title)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
-
-    # convert y‑ticks to %
-    ticks = ax.get_yticks()
-    ax.set_yticklabels((ticks * 100).astype(int))
-
-    ax.legend(loc="lower right")
+    ax.legend(loc="upper left")
     plt.tight_layout()
     return fig
