@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import torch.optim as optim
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 from typing import Dict
 from wandb import Table 
@@ -43,7 +44,7 @@ from models.backbone_factory import make_backbone
 from utils.encoding import encode_dataset
 
 from utils.plots import (
-    plot_reward_curves, plot_selection_overlap, plot_entropy_vs_reward, plot_fraction_relevant_curves
+    plot_reward_curves, plot_selection_overlap, plot_cumulative_regret, plot_fraction_relevant_curves
 )
 from baselines import BASELINE_REGISTRY
 from baselines.abtest.abtest_baseline import ABTestBaseline
@@ -51,6 +52,7 @@ from baselines.ucb.ucb_baseline import UCBBaseline
 from baselines.bandit.utils import load_linucb
 from baselines.random.random_baseline import RandomBaseline
 from baselines.thompson.baseline import ThompsonBaseline
+from baselines.epsilon.baseline import EpsilonGreedyBaseline
 
 GFN_FACTORY = {
     "classical": GFlowNetMulticlass,
@@ -140,6 +142,61 @@ def log_comparison(metrics_map: Dict[str, Dict[str, float]]):
     print(tabulate(table.data, headers=headers, tablefmt="github"))
 
 
+def filter_df_for_bandit(df, item_col="productId",
+                         reward_col="reward", min_pos=5, max_items=5_000):
+    pos = df[df[reward_col] == 1][item_col].value_counts()
+    keep = pos[pos >= min_pos].index[:max_items]      
+    return df[df[item_col].isin(keep)].copy()
+
+def run_thompson_sampling(
+        df            : pd.DataFrame,
+        item_col      : str = "productId",
+        reward_col    : str = "reward",        
+        n_visits      : int = 5_000,
+        n_iterations  : int = 10,
+        rng_seed      : int | None = None
+) -> tuple[list[dict], float]:
+    rng = np.random.default_rng(rng_seed)
+    base_rng = np.random.default_rng(rng_seed)
+    items = df[item_col].unique()
+    n_items = len(items)
+
+    lookup = [df[df[item_col] == it][reward_col].to_numpy(np.int8) for it in items]
+
+    all_results = []
+    final_ctrs = []
+
+    for it in tqdm(range(n_iterations), desc="[TS] run"):
+        rng = np.random.default_rng(base_rng.integers(1_000_000_000))
+        alpha = np.ones(n_items, dtype=np.float64)
+        beta = np.ones(n_items, dtype=np.float64)
+
+        cum = 0.0
+        for v in range(n_visits):
+            sample = rng.beta(alpha, beta)
+            idx = int(np.argmax(sample))
+            rwd = int(rng.choice(lookup[idx]))
+
+            if rwd == 1:
+                alpha[idx] += 1.0
+            else:
+                beta[idx] += 1.0
+
+            cum += rwd
+            all_results.append(dict(
+                iteration=it,
+                visit=v,
+                item_idx=idx,
+                reward=rwd,
+                fraction_relevant=cum / (v + 1)
+            ))
+
+        final_ctrs.append(cum / n_visits)
+
+    mean_final_ctr = float(np.mean(final_ctrs))
+    return all_results, mean_final_ctr
+
+
 def main():
 
     parser = argparse.ArgumentParser()
@@ -148,22 +205,50 @@ def main():
     args, _ = parser.parse_known_args()
 
     cfg = get_config()
-    set_seed(cfg.seed)
+    # set_seed(cfg.seed)
     init_wandb_(cfg)
+    metrics_map = {}
+    raw_results = {}
 
     ds, objectives, class_names, class_indices = DATASET_FACTORY[cfg.dataset](cfg)
     cat_map = build_cat_name_to_id_map(ds.coco) if cfg.dataset == "COCO" else None
 
     if cfg.dataset == "AMAZON":
         embeddings = None
-        meta = ds
+        # ds = filter_df_for_bandit(ds, min_pos=5, max_items=100)
         
+        # meta = ds
     else:
         backbone = make_backbone(cfg)
         embeddings, meta = encode_dataset(backbone, ds, cfg)
         if isinstance(meta, torch.Tensor):
             meta = meta.to(DEVICE)
         wandb.log({"Embeddings/pool_size": len(embeddings)})
+    
+    if cfg.dataset == "AMAZON" and cfg.simple_ts:
+        if "reward" not in ds.columns:
+            ds["reward"] = (ds["rating"] > cfg.reward_threshold).astype(int)
+
+        ds_filtered = filter_df_for_bandit(ds, item_col="productId",
+                                       reward_col="reward",
+                                       min_pos=5, max_items=50)
+        assert set(ds_filtered["reward"].unique()).issubset({0, 1})
+        ts_raw, ts_ctr = run_thompson_sampling(
+            ds_filtered,
+            item_col="productId",
+            reward_col="reward",
+            n_visits=5000,
+            n_iterations=1000,
+            rng_seed=cfg.seed,
+        )
+
+        metrics_map["simple_ts"] = {
+            "Reward Mean": float(np.mean([x["reward"] for x in ts_raw])),
+            "Reward Median": float(np.median([x["reward"] for x in ts_raw])),
+            "Reward Max": float(np.max([x["reward"] for x in ts_raw])),
+            "Reward Min": float(np.min([x["reward"] for x in ts_raw])),
+        }
+        raw_results["simple_ts"] = ts_raw
 
     baseline_data = (embeddings, meta) if embeddings is not None else ds
     reward_fn = build_reward_fn(cfg, objectives, cat_map, class_indices)
@@ -173,6 +258,7 @@ def main():
         "ucb":     cfg.ucb,
         "bandit":  (cfg.MAB and embeddings is not None),
         "thompson": cfg.thompson,
+        "epsilon": cfg.epsilon_greedy,
         "random":  cfg.random_baseline,
     }
 
@@ -189,9 +275,13 @@ def main():
             lambda: (UCBBaseline(cfg).offline_fit(ds), None),
             lambda bl,_: bl.online_simulate(cfg.num_iterations)  
         ),
-        "thompson": (
+       "thompson": (
             lambda: (ThompsonBaseline(cfg).offline_fit(ds), None),
-            lambda bl,_: bl.online_simulate(cfg.num_iterations)
+            lambda bl, _: bl.online_simulate(cfg.num_iterations)   # returns (metrics, raw)
+        ),
+        "epsilon": (
+            lambda: (EpsilonGreedyBaseline(cfg).offline_fit(ds), None),
+            lambda bl,_: bl.online_simulate(cfg.num_iterations, return_raw=True)
         ),
         "bandit": (
             lambda: (load_linucb(
@@ -205,7 +295,6 @@ def main():
         ),
     }
 
-    raw_results, metrics_map = {}, {}
 
     for name, (train_fn, eval_fn) in METHOD_DISPATCH.items():
         if not active_methods.get(name):
@@ -228,28 +317,45 @@ def main():
 
     log_comparison(metrics_map)
 
-    curves = {}
-    for name, recs in raw_results.items():
-        df = pd.DataFrame(recs)
+    ctr_curves = {}
+    regret_curves = {}
+    for nm, raw in raw_results.items():
+        df = pd.DataFrame(raw)
 
-        if "fraction_relevant" not in df.columns and "fraction" in df.columns:
-            df = df.rename(columns={"fraction": "fraction_relevant"})
+        if "fraction_relevant" in df.columns:
+            ctr_avg = df.groupby("visit", as_index=False)["fraction_relevant"].mean()
+            ctr_curves[nm] = ctr_avg
 
-        if "fraction_relevant" not in df.columns:
-            print(f"[WARN] '{name}' results have no fraction column -> skipped in plot")
-            continue
+        if "reward" in df.columns:
+            # On garde les rewards bruts (par visit)
+            df_sorted = df.sort_values(["iteration", "visit"])
+            grouped = df_sorted.groupby("visit", as_index=False)
+            # reward moyen par timestep (across iterations)
+            avg_reward_per_step = grouped["reward"].mean()
+            # reconstruction cumulative
+            avg_reward_per_step["cumulative_reward"] = avg_reward_per_step["reward"].cumsum()
+            regret_curves[nm] = avg_reward_per_step.rename(columns={"cumulative_reward": "cum_reward"})
 
-        avg = df.groupby("visit", as_index=False)["fraction_relevant"].mean()
-        
-        curves[name] = avg
-    print(f"[INFO] curves collected: {list(curves)}")
+    styles = {"ucb": "r-", "thompson": "g--", "epsilon": "b-",
+            "abtest": "y--", "random": "k:"}
+    labels = {"ucb": "UCB", "thompson": "Thompson Sampling",
+            "epsilon": r"$\epsilon$‑Greedy", "abtest": "A/B Test",
+            "random": "Random"}
 
-    if curves:
-        fig = plot_fraction_relevant_curves(curves)
-        wandb.log({"Plots/FractionRelevant": wandb.Image(fig)})
-        plt.close(fig)
-    else:
-        print("[INFO] No curves to plot.")
+    if ctr_curves:
+        fig_ctr = plot_fraction_relevant_curves(ctr_curves, styles, labels)
+        wandb.log({"Plots/CTR": wandb.Image(fig_ctr)})
+        plt.close(fig_ctr)
+
+    if regret_curves:
+        item_ctr = ds_filtered.groupby("productId")["reward"].mean()
+        print(item_ctr.sort_values(ascending=False).tail(10))
+        best_ctr = item_ctr.max()
+        fig_regret = plot_cumulative_regret(regret_curves, best_ctr, styles, labels)
+        wandb.log({"Plots/Regret": wandb.Image(fig_regret)})
+        plt.close(fig_regret)
+
+    
     wandb.finish()
 
 if __name__ == "__main__":
