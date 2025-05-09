@@ -1,81 +1,54 @@
+import pandas as pd
 import numpy as np
 from tqdm import tqdm
 
-class UCBSamplingReplayer:
-    """
-    Simulate UCB bandit on historical user-item interactions.
-    """
+class _UCBReplayer:
     def __init__(
         self,
-        ucb_c: float,
+        df: pd.DataFrame,
+        *,
+        item_col: str,
+        reward_col: str,
         n_visits: int,
-        reward_history,
-        item_col_name: str,
-        visitor_col_name: str,
-        reward_col_name: str,
-        n_iterations: int = 1
+        c: float = 2.0,
+        n_iter: int = 1,
+        seed: int | None = None,
     ):
-        self.ucb_c       = ucb_c
-        self.n_visits    = n_visits
-        self.n_iterations= n_iterations
+        self.df         = df
+        self.item_col   = item_col
+        self.reward_col = reward_col
+        self.n_visits   = n_visits
+        self.c          = c
+        self.n_iter     = n_iter
+        self.rng        = np.random.default_rng(seed)
 
-        self.df       = reward_history
-        self.item_col = item_col_name
-        self.vis_col  = visitor_col_name
-        self.rwd_col  = reward_col_name
-
-        grp = self.df.groupby(self.item_col)[[self.vis_col, self.rwd_col]].agg(list)
-        self.items   = grp.index.to_numpy()
+        self.items   = df[item_col].unique()
         self.n_items = len(self.items)
-        self.item2vis= {it: np.array(vis) for it, vis in zip(grp.index, grp[self.vis_col])}
-        self.item2rwd= {it: np.array(rw, dtype=float) for it, rw in zip(grp.index, grp[self.rwd_col])}
+        self.bank    = [df.loc[df[item_col] == it, reward_col].to_numpy(np.int8)
+                        for it in self.items]
 
-    def reset(self):
-        self.Q        = np.zeros(self.n_items)
-        self.N        = np.zeros(self.n_items) + 1e-4
-        self.timestep= 1
+    def run(self) -> list[dict]:
+        recs = []
+        for it in tqdm(range(self.n_iter), desc="[UCB] run"):
+            Q = np.zeros(self.n_items)
+            N = np.zeros(self.n_items) + 1e-6 
+            cum = 0.0
 
-    def select_item(self) -> int:
-        ln_t = np.log(self.timestep)
-        ucb  = self.ucb_c * np.sqrt(ln_t/self.N)
-        action = int(np.argmax(self.Q + ucb))
-        self.timestep += 1
-        return action
+            for v in range(self.n_visits):
+                conf = self.c * np.sqrt(np.log(v + 1) / N)
+                idx  = int(np.argmax(Q + conf))
 
-    def record_result(self, idx: int, reward: float):
-        self.N[idx] += 1
-        self.Q[idx] += (reward - self.Q[idx]) / self.N[idx]
+                rwd  = int(self.rng.choice(self.bank[idx]))
 
-    def simulator(self) -> list[dict]:
-        results = []
-        for run in range(self.n_iterations):
-            tqdm.write(f"[UCB] Run {run+1}/{self.n_iterations}")
-            self.reset()
-            total = 0.0
+                N[idx] += 1
+                Q[idx] += (rwd - Q[idx]) / N[idx]
 
-            for visit in tqdm(range(self.n_visits),
-                              desc=f"[UCB] Visits run {run+1}",
-                              leave=True):
-                idx = self.select_item()
-                item_id = self.items[idx]
-
-                vis_arr = self.item2vis[item_id]
-                rwd_arr = self.item2rwd[item_id]
-                pick = np.random.randint(len(vis_arr))
-                visitor_id, reward_val = vis_arr[pick], float(rwd_arr[pick])
-
-                self.record_result(idx, reward_val)
-                total += reward_val
-                frac = total / (visit+1)
-
-                results.append({
-                    'run': run,
-                    'visit': visit,
-                    'item_id': item_id,
-                    'visitor_id': visitor_id,
-                    'reward': reward_val,
-                    'cum_reward': total,
-                    'fraction': frac
-                })
-            tqdm.write(f"[UCB] Completed run {run+1}, final fraction={frac:.4f}")
-        return results
+                cum += rwd
+                recs.append(
+                    dict(iteration=it,
+                         visit=v,
+                         item_idx=idx,
+                         reward=rwd,
+                         fraction_relevant=cum / (v + 1))
+                )
+        return recs

@@ -1,34 +1,34 @@
+from __future__ import annotations
+import pandas as pd
 import numpy as np
+
 from baselines.core.baseline import BaseBaseline
-from baselines.ucb.replayer import UCBSamplingReplayer
+from baselines.ucb.replayer import _UCBReplayer
+
+
 
 class UCBBaseline(BaseBaseline):
-    """UCB : no neede for offline phasee."""
+    """UCB‑1 replay baseline."""
 
-    def _build_model(self):
+    def _build_model(self):         
         return None
 
-    def offline_fit(self, data):
-        self.df = data
+    def offline_fit(self, ratings_df: pd.DataFrame):
+        self.df = ratings_df
         return self
 
-    def online_simulate(self, n_visits: int, *, return_raw: bool = False):
-        sim = UCBSamplingReplayer(
-            ucb_c=self.cfg.ucb_c,
-            n_visits=n_visits,
-            reward_history=self.df,
-            item_col_name="productId",
-            visitor_col_name="userId",
-            reward_col_name="rating",
-            n_iterations=1,
+    def online_simulate(self, n_iters: int):
+        rep = _UCBReplayer(
+            self.df,
+            item_col   = "productId",
+            reward_col = "reward",
+            n_visits   = n_iters,
+            c          = getattr(self.cfg, "ucb_c", 2.0),
+            n_iter     = 100,
+            seed       = self.cfg.seed,
         )
-        raw = sim.simulator()
-        if return_raw:
-            return raw
+        raw = rep.run()
 
-        final_vals = [
-            r.get("fraction_relevant", r.get("fraction"))
-            for r in raw if r["visit"] == n_visits - 1
-        ]
-        metrics = {"Reward Mean": float(np.mean(final_vals))}
-        return metrics, raw
+        final_ctr = np.mean([r["fraction_relevant"]
+                             for r in raw if r["visit"] == n_iters - 1])
+        return {"Reward Mean": float(final_ctr)}, raw
