@@ -36,16 +36,14 @@ def log_comparison(metrics: Dict[str, Dict[str, float]]):
     print(tabulate(table.data, headers=headers, tablefmt="github"))
 
 
-# =====================================================================
 def main() -> None:
-    # ----------------- CLI / config ----------------------------------
     parser = argparse.ArgumentParser()
     parser.add_argument("--iterations", type=int, default=5_000,
                         help="number of visits to simulate online")
     args, _ = parser.parse_known_args()
 
     cfg = get_config()
-    cfg.num_iterations = args.iterations          # harmonise naming
+    cfg.num_iterations = args.iterations      
     set_seed(cfg.seed)
     init_wandb_(cfg)
 
