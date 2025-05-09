@@ -57,6 +57,7 @@ def get_config():
         default=None,
         help="If set, keep only this many rows from the Amazon CSV (random sample).",
     )
+    parser.add_argument('--max_items', action='store_true', default=100)
     parser.add_argument('--abtest', action='store_true')
     parser.add_argument('--ucb',    action='store_true')
     parser.add_argument('--abtest_n_test', type=int, default=1000)
@@ -69,8 +70,10 @@ def get_config():
                     help="Run ε‑greedy baseline")
     parser.add_argument("--simple_ts", action="store_true",
                     help="Run the minimal Thompson‑Sampling baseline")
+    parser.add_argument("--out_dir", type=str, default="outputs/")
     parser.add_argument("--simple_ucb", action="store_true",
                     help="Run the minimal UCB baseline")
+    parser.add_argument("--num_visit", action="store_true", default=100)
     # plots
     parser.add_argument(
         "--plots", action="store_true",
