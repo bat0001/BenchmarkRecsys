@@ -54,13 +54,13 @@ def get_config():
                     help="Chemin vers le CSV Amazon Reviews")
     parser.add_argument(
         "--amazon_min_pos",
-        type=int, default=0,
+        type=int, default=1,
         help="Nombre minimum de rewards positifs pour qu’un item soit gardé"
     )
     parser.add_argument(
         "--amazon_subset",
         type=int,
-        default=1000,
+        default=7000,
         help="If set, keep only this many rows from the Amazon CSV (random sample).",
     )
 
