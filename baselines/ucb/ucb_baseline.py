@@ -24,7 +24,7 @@ class UCBBaseline(BaseBaseline):
             reward_col = "reward",
             n_visits   = n_iters,
             c          = getattr(self.cfg, "ucb_c", 2.0),
-            n_iter     = 100,
+            n_iter     = self.cfg.num_iterations,
             seed       = self.cfg.seed,
         )
         raw = rep.run()
@@ -32,3 +32,4 @@ class UCBBaseline(BaseBaseline):
         final_ctr = np.mean([r["fraction_relevant"]
                              for r in raw if r["visit"] == n_iters - 1])
         return {"Reward Mean": float(final_ctr)}, raw
+        
