@@ -5,6 +5,7 @@ from wandb   import Table
 from tabulate import tabulate
 from utils.device import DEVICE
 
+from utils.formatters.registry import get as get_formatter
 from utils.config       import get_config
 from utils.seed         import set_seed
 from utils.logger       import init_wandb_
@@ -12,6 +13,8 @@ from utils.rewards      import build_reward_fn
 from utils.plots        import plot_fraction_relevant_curves, plot_cumulative_regret
 from datasets.loader    import DATASET_FACTORY
 from baselines          import BASELINE_REGISTRY        
+
+import sys
 
 def filter_df_for_bandit(df: pd.DataFrame,
                          *, item_col="productId",
@@ -46,7 +49,11 @@ def main() -> None:
     init_wandb_(cfg)
 
     ds, objectives, class_names, class_idx = DATASET_FACTORY[cfg.dataset](cfg)
+    
+    formatter  = get_formatter(cfg.dataset)
+    canon_df   = formatter(ds, cfg) 
 
+    sys.exit(0)
     if cfg.dataset == "AMAZON":
         if "reward" not in ds.columns:
             ds["reward"] = (ds["rating"] > cfg.reward_threshold).astype(int)
