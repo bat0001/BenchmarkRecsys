@@ -53,11 +53,10 @@ def main() -> None:
     formatter  = get_formatter(cfg.dataset)
     canon_df   = formatter(ds, cfg) 
 
-    sys.exit(0)
-    if cfg.dataset == "AMAZON":
-        if "reward" not in ds.columns:
-            ds["reward"] = (ds["rating"] > cfg.reward_threshold).astype(int)
-        ds = filter_df_for_bandit(ds, max_items=cfg.max_items)
+    # if cfg.dataset == "AMAZON":
+    #     if "reward" not in ds.columns:
+    #         ds["reward"] = (ds["rating"] > cfg.reward_threshold).astype(int)
+    #     ds = filter_df_for_bandit(ds, max_items=cfg.max_items)
 
     active: Dict[str, bool] = {
         "abtest":    cfg.abtest,
@@ -74,8 +73,8 @@ def main() -> None:
         if not on:
             continue
         bl_cls    = BASELINE_REGISTRY[name]
-        baseline  = bl_cls(cfg).offline_fit(ds)
-
+        # baseline  = bl_cls(cfg).offline_fit(ds)
+        baseline  = bl_cls(cfg).offline_fit(canon_df)
     
         print(cfg.num_iterations)
         metrics, raw = baseline.online_simulate(cfg.num_iterations)
