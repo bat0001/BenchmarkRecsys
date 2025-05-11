@@ -37,13 +37,11 @@ def log_comparison(metrics: Dict[str, Dict[str, float]]):
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--iterations", type=int, default=5_000,
-                        help="number of visits to simulate online")
-    args, _ = parser.parse_known_args()
+    # parser = argparse.ArgumentParser()
+   
+    # args, _ = parser.parse_known_args()
 
     cfg = get_config()
-    cfg.num_iterations = args.iterations      
     set_seed(cfg.seed)
     init_wandb_(cfg)
 
@@ -68,19 +66,15 @@ def main() -> None:
     for name, on in active.items():
         if not on:
             continue
+        bl_cls    = BASELINE_REGISTRY[name]
+        baseline  = bl_cls(cfg).offline_fit(ds)
 
-        bl_cls = BASELINE_REGISTRY[name]     
-        baseline = bl_cls(cfg).offline_fit(ds)
+    
+        print(cfg.num_iterations)
+        metrics, raw = baseline.online_simulate(cfg.num_iterations)
 
-        out = baseline.online_simulate(cfg.num_visit)
-        if isinstance(out, tuple):
-            m, raw = out
-        else:
-            m, raw = out, None
-
-        metrics_map[name] = m
-        if isinstance(raw, list):
-            raw_results[name] = raw
+        metrics_map[name] = metrics
+        raw_results[name] = raw  
 
     log_comparison(metrics_map)
 
