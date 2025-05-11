@@ -15,6 +15,28 @@ from baselines                    import BASELINE_REGISTRY
 from utils.plots                 import plot_fraction_relevant_curves
 
 
+def log_comparison(metrics: Dict[str, Dict[str, float]]):
+    all_keys = sorted({k for m in metrics.values() for k in m.keys()})
+    headers  = ["Method"] + all_keys
+
+    table = Table(columns=headers)
+    wb = {}
+    for name, m in metrics.items():
+        row = [name]
+        for k in all_keys:
+            val = m.get(k, None)
+            if isinstance(val, (int, float)):
+                row.append(f"{val:.4f}")
+                wb[f"{name}/{k}"] = val
+            else:
+                row.append(str(val))
+        table.add_data(*row)
+
+    wandb.log({"Comparison Table": table})
+    wandb.log(wb)
+
+    print(tabulate(table.data, headers=headers, tablefmt="github"))
+
 
 def main() -> None:
     # 1) parser + config + wandb
