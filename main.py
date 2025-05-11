@@ -97,7 +97,7 @@ def main() -> None:
             else:
                 metrics_map[baseline_name][metric_name] = score
 
-    # log_comparison(metrics_map)
+    log_comparison(metrics_map)
 
     ctr_curves = {}
     for name, raw in raw_results.items():
