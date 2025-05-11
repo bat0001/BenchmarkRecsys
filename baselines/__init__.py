@@ -6,10 +6,9 @@ from baselines.thompson.baseline import ThompsonBaseline
 from baselines.epsilon.baseline import EpsilonGreedyBaseline
 
 BASELINE_REGISTRY = {
-    "linucb": LinUCBBaseline,
-    "gfn_classical": ClassicalGFNBaseline,
-    "abtest": ABTestBaseline,
+    # "gfn_classical": ClassicalGFNBaseline,
+    # "abtest": ABTestBaseline,
     "thompson": ThompsonBaseline,
-    "epsilon":   EpsilonGreedyBaseline,
+    # "epsilon":   EpsilonGreedyBaseline,
     "ucb":    UCBBaseline,
 }
