@@ -39,7 +39,6 @@ def log_comparison(metrics: Dict[str, Dict[str, float]]):
 
 
 def main() -> None:
-    # 1) parser + config + wandb
     p = argparse.ArgumentParser()
     p.add_argument("--iterations", "-n", type=int, default=None,
                    help="Nombre de visites online")
@@ -51,10 +50,9 @@ def main() -> None:
     set_seed(cfg.seed)
     init_wandb_(cfg)
 
-    # 2) chargement + formatage
     raw_df, objectives, class_names, class_idx = DATASET_FACTORY[cfg.dataset](cfg)
     formatter = get_formatter(cfg.dataset)
-    canon_df  = formatter(raw_df, cfg)   # -> DataFrame avec item,user,reward
+    canon_df  = formatter(raw_df, cfg)  
 
     # 3) run baselines
     active = {
