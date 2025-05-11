@@ -53,11 +53,20 @@ def get_config():
     parser.add_argument("--amazon_path", type=str, default="data/amazon.csv",
                     help="Chemin vers le CSV Amazon Reviews")
     parser.add_argument(
+        "--amazon_min_pos",
+        type=int, default=0,
+        help="Nombre minimum de rewards positifs pour qu’un item soit gardé"
+    )
+    parser.add_argument(
         "--amazon_subset",
         type=int,
-        default=None,
+        default=1000,
         help="If set, keep only this many rows from the Amazon CSV (random sample).",
     )
+
+
+
+    # Bandits
     parser.add_argument('--max_items', action='store_true', default=100)
     parser.add_argument('--abtest', action='store_true')
     parser.add_argument('--ucb',    action='store_true')
