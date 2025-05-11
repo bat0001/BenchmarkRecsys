@@ -74,6 +74,11 @@ def get_config():
     parser.add_argument("--out_dir", type=str, default="outputs/")
     parser.add_argument("--simple_ucb", action="store_true",
                     help="Run the minimal UCB baseline")
+    parser.add_argument(
+        "--reward_threshold",
+        type=float,
+        default=4.0,
+    )
     parser.add_argument("--num_visit", action="store_true", default=1000)
     # plots
     parser.add_argument(
