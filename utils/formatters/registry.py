@@ -6,7 +6,7 @@ _loaded = False
 
 def register(name: str):
     def deco(cls):
-        _FORMATTERS[name.upper()] = cls
+        _FORMATTERS[name.upper()] = cls()
         return cls
     return deco
 
