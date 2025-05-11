@@ -53,11 +53,6 @@ def main() -> None:
     formatter  = get_formatter(cfg.dataset)
     canon_df   = formatter(ds, cfg) 
 
-    # if cfg.dataset == "AMAZON":
-    #     if "reward" not in ds.columns:
-    #         ds["reward"] = (ds["rating"] > cfg.reward_threshold).astype(int)
-    #     ds = filter_df_for_bandit(ds, max_items=cfg.max_items)
-
     active: Dict[str, bool] = {
         "abtest":    cfg.abtest,
         "ucb":       cfg.ucb,
