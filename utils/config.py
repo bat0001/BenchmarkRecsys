@@ -8,7 +8,8 @@ def get_config():
     parser.add_argument("--subset_size", type=int, default=4, help="Size of the subset to select")
     parser.add_argument("--batch_size_train", type=int, default=128, help="Training batch size")
     parser.add_argument("--learning_rate", type=float, default=1e-4, help="Learning rate")
-    parser.add_argument("--num_iterations", type=int, default=5000, help="Number of training iterations")
+    parser.add_argument("--num_iterations", "--iterations", type=int, default=100,
+                         help="Number of training iterations / online visits")
     parser.add_argument("--entropy_coeff", type=float, default=0.01, help="Entropy coefficient")
     parser.add_argument("--dataset", type=str, default="CIFAR-10",
                     choices=["CIFAR-10", "CIFAR-100", "FashionMNIST", "COCO", "AMAZON"],
@@ -73,7 +74,7 @@ def get_config():
     parser.add_argument("--out_dir", type=str, default="outputs/")
     parser.add_argument("--simple_ucb", action="store_true",
                     help="Run the minimal UCB baseline")
-    parser.add_argument("--num_visit", action="store_true", default=100)
+    parser.add_argument("--num_visit", action="store_true", default=1000)
     # plots
     parser.add_argument(
         "--plots", action="store_true",
