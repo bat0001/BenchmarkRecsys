@@ -46,17 +46,18 @@ class ThompsonBaseline(BaseBaseline):
 
     def online_simulate(
         self,
-        n_visits: int = 1000,
+        n_visits: int = 100,
         *,
         n_iterations: int | None = None,
-        return_raw: bool = False,
-    ):
+        # return_raw: bool = False,
+    ) -> Tuple[Dict[str, float], List[dict]] :
         """
         Run the replay loop and return either:
           • a metrics dict   (default)
           • (metrics, raw_records)   if return_raw=True
         """
         n_iter = n_iterations or self.cfg.num_iterations
+        
         rng    = np.random.default_rng(self.cfg.seed)
 
         results: List[Dict] = []
@@ -89,4 +90,4 @@ class ThompsonBaseline(BaseBaseline):
             final_ctrs.append(cum / n_visits)
 
         metrics = {"Reward Mean": float(np.mean(final_ctrs))}
-        return (metrics, results) if return_raw else metrics
+        return metrics, results
