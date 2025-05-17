@@ -1,8 +1,10 @@
 from __future__ import annotations
-import argparse, numpy as np, pandas as pd, matplotlib.pyplot as plt, torch, wandb
+import argparse, numpy as np, pandas as pd, matplotlib.pyplot as plt, torch, wandb, sys
 from typing     import Dict
 from wandb      import Table
 from tabulate   import tabulate
+
+
 
 from utils.device                import DEVICE
 from utils.config                import get_config
@@ -10,10 +12,12 @@ from utils.seed                  import set_seed
 from utils.logger                import init_wandb_
 from utils.formatters.registry   import get as get_formatter
 from utils.metrics.registry      import get_all as get_metric_classes
+from utils.metrics.base          import SequenceView    
 from datasets.loader             import DATASET_FACTORY
-from baselines                    import BASELINE_REGISTRY
+from baselines                   import BASELINE_REGISTRY
 from utils.plots                 import plot_fraction_relevant_curves
 
+from utils.llm.registry import get_judge
 
 def log_comparison(metrics: Dict[str, Dict[str, float]]):
     all_keys = sorted({k for m in metrics.values() for k in m.keys()})
@@ -63,6 +67,7 @@ def main() -> None:
         "random":   cfg.random_baseline,
     }
 
+    cfg.baselines = [k for k, v in active.items() if v]
     metrics_map : Dict[str, Dict[str, float]] = {}
     raw_results : Dict[str, list[dict]]       = {}
 
@@ -85,17 +90,42 @@ def main() -> None:
         if raw:
             raw_results[name] = raw
 
+    # ------------------------------------------------------------------
     metric_classes = get_metric_classes()
-    for baseline_name, raw in raw_results.items():
-        metrics_map.setdefault(baseline_name, {})
 
-        for metric_name, MetricCls in metric_classes.items():
-            metric_obj = MetricCls()
-            score = metric_obj(canon_df, raw, cfg)
+    # Sépare métriques locales ↔ globales
+    local_metrics   = {n: c for n, c in metric_classes.items()
+                    if not getattr(c, "global_metric", False)}
+    global_metrics  = {n: c for n, c in metric_classes.items()
+                    if getattr(c, "global_metric", False)}
+
+    # ----------- 3‑a  MÉTRIQUES LOCALES (une baseline à la fois) -----
+    for bl_name, raw in raw_results.items():
+        metrics_map.setdefault(bl_name, {})
+        for metric_name, MetricCls in local_metrics.items():
+            metric_obj = MetricCls(cfg)                       #   instanciation
+            score      = metric_obj(canon_df, raw, cfg)       #   calcul
             if isinstance(score, dict):
-                metrics_map[baseline_name].update(score)
+                metrics_map[bl_name].update(score)
             else:
-                metrics_map[baseline_name][metric_name] = score
+                metrics_map[bl_name][metric_name] = score
+
+    # ----------- 3‑b  MÉTRIQUES GLOBALES (plusieurs baselines) -------
+    if global_metrics:
+        print('in global metrics')
+        seq_view = SequenceView(raw_results, canon_df)
+        print('seq view')
+        for metric_name, MetricCls in global_metrics.items():
+            print('in for')
+            metric_obj = MetricCls(cfg)                       # ex. LLMPreferenceBT
+            print('obj')
+            scores = metric_obj(seq_view, cfg)                # retourne {bl: val}
+            print('scores')
+            for bl, val in scores.items():
+                metrics_map.setdefault(bl, {})[metric_name] = val
+    print('there')
+    
+    # ------------------------------------------------------------------
 
     log_comparison(metrics_map)
 
