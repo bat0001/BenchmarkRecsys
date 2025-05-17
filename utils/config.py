@@ -89,6 +89,17 @@ def get_config():
         default=4.0,
     )
     parser.add_argument("--num_visit", action="store_true", default=1000)
+
+    # LLM
+
+    parser.add_argument("--llm_model",
+                    default="meta-llama/Llama-3.2-1B-Instruct",
+                    help="HF model id used as judge")
+    parser.add_argument("--bt_pairs", type=int, default=20,
+                    help="#pairs (per matchup) sent to the LLM judge")
+    parser.add_argument("--llm_temperature", type=float, default=0.0,
+                    help="temperature for LLM judge (0 = greedy)")
+
     # plots
     parser.add_argument(
         "--plots", action="store_true",
