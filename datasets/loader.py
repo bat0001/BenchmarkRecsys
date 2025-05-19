@@ -28,8 +28,8 @@ def _load_amazon(cfg):
     df = pd.read_csv(cfg.data.amazon_path,
                      names=["userId", "productId", "rating", "timestamp"])
 
-    if cfg.amazon_subset:
-        df = df.sample(n=cfg.amazon_subset, random_state=cfg.seed)
+    if cfg.data.amazon_subset:
+        df = df.sample(n=cfg.data.amazon_subset, random_state=cfg.seed)
 
     reward_thr = getattr(cfg, "reward_threshold", 4)
     df["reward"] = (df["rating"] > reward_thr).astype(int)
