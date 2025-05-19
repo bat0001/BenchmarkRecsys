@@ -14,8 +14,8 @@ class AmazonFormatter(BaseFormatter):
 
         pos_counts = df[df["reward"] == 1]["productId"].value_counts()
         keep_items = pos_counts[pos_counts >= cfg.data.amazon_min_pos].index
-        if cfg.amazon_subset is not None:
-            keep_items = keep_items[: cfg.amazon_subset]
+        if cfg.data.amazon_subset is not None:
+            keep_items = keep_items[: cfg.data.amazon_subset]
         df = df[df["productId"].isin(keep_items)]
 
         return df[["productId", "userId", "reward"]]
