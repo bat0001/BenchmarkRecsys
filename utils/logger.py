@@ -1,24 +1,14 @@
 import wandb
 import torch 
 import numpy as np
+from omegaconf import OmegaConf
 
 def init_wandb_(config):
     wandb.init(
-        project=config.wandb_project,
-        name=config.wandb_run_name,
-        config={
-            "latent_dim": config.latent_dim,
-            "hidden_dim": config.hidden_dim,
-            "subset_size": config.subset_size,
-            "batch_size_train": config.batch_size_train,
-            "learning_rate": config.learning_rate,
-            "num_iterations": config.num_iterations,
-            "entropy_coeff": config.entropy_coeff,
-            "dataset": config.dataset,
-            "target_classes": config.target_classes,
-            "num_epochs_vae": config.num_epochs_vae,
-            "seed": config.seed
-        }
+        project = config.wandb.project,
+        name    = config.wandb.run_name,
+        mode    = "offline" if config.wandb.get("offline", False) else "online",
+        config  = OmegaConf.to_container(config, resolve=True)  
     )
 
 def log_recommendations_coco(indices, dataset, key):
