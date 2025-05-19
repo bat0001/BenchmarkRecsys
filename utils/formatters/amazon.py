@@ -10,7 +10,7 @@ class AmazonFormatter(BaseFormatter):
             "userId":    "userId",
             "rating":    "rating"
         })
-        df["reward"] = (df["rating"] > cfg.reward_threshold).astype(int)
+        df["reward"] = (df["rating"] > cfg.data.reward_threshold).astype(int)
 
         pos_counts = df[df["reward"] == 1]["productId"].value_counts()
         keep_items = pos_counts[pos_counts >= cfg.amazon_min_pos].index
