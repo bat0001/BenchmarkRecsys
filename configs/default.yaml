@@ -10,7 +10,7 @@ core:
 # --------------------------------------------------------------------
 data:
   dataset:        AMAZON                # {CIFAR‑10,CIFAR‑100,COCO,AMAZON,…}
-  amazon_path:    data/amazon.csv
+  amazon_path:    data/amazon_reviews/1/ratings_Electronics (1).csv
   amazon_min_pos: 5
   amazon_subset:  7_000                 # -1  ⇒ keep all rows
   reward_threshold: 4.0                 # rating > threshold → reward=1
