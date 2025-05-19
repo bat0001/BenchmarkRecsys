@@ -25,7 +25,7 @@ def _load_cifar(cfg):
     return ds, objectives, ds.classes, class_indices
 
 def _load_amazon(cfg):
-    df = pd.read_csv(cfg.amazon_path,
+    df = pd.read_csv(cfg.data.amazon_path,
                      names=["userId", "productId", "rating", "timestamp"])
 
     if cfg.amazon_subset:
