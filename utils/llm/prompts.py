@@ -1,38 +1,86 @@
 """
-Helper to build a *deterministic* prompt for pairwise list comparison.
-Feel free to tweak wording / add context (user info, category, language…).
+Prompt factory for pairwise *product‑list* judging (LLM‑as‑a‑judge).
+
+Two deterministic templates are exposed:
+
+    •  with_ctx  – includes user purchase / rating history
+    •  no_ctx    – no user context
+
+The wording mirrors the NeurIPS‑24 appendix prompts, simply replacing
+the music domain with amazon products.
 """
+from __future__ import annotations
 from typing import Sequence
 
-_PROMPT_TEMPLATE = (
-    "You are an impartial evaluator of recommendation quality.\n"
-    "Two candidate recommendation lists are given:\n\n"
-    "List 1: {list1}\n"
-    "List 2: {list2}\n\n"
-    "Consider overall usefulness, diversity and relevance for the user.\n"
-    "Reply with **only** the single number `1` if List 1 is better,\n"
-    "or `2` if List 2 is better."
-)
+_WITH_CTX = """\
+You are an **impartial evaluator of e‑commerce recommendations**.
+
+Below are the user’s past interactions:
+
+--- BEGIN USER PURCHASED / LIKED PRODUCTS ---
+{user_likes}
+--- END USER PURCHASED / LIKED PRODUCTS ---
+
+--- BEGIN USER DISLIKED / RETURNED PRODUCTS ---
+{user_dislikes}
+--- END USER DISLIKED / RETURNED PRODUCTS ---
+
+Two candidate recommendation lists are given.
+
+List 1 ➜ {list1}
+List 2 ➜ {list2}
+
+**Task.**
+Think *step‑by‑step* about usefulness, diversity and personal relevance
+*for THIS user*.  
+After thinking, output **only** the single number `1` *if List 1 is better*,
+or `2` *if List 2 is better*. No other text.
+"""
+
+_NO_CTX = """\
+You are an **impartial evaluator of e‑commerce recommendations**.
+
+Two candidate recommendation lists are given.
+
+List 1 ➜ {list1}
+List 2 ➜ {list2}
+
+**Task.**
+Think *step‑by‑step* about overall usefulness, diversity and relevance.  
+After thinking, output **only** the single number `1` *if List 1 is better*,
+or `2` *if List 2 is better*. No other text.
+"""
 
 def format_pair_prompt(
     list_a: Sequence[str],
     list_b: Sequence[str],
-    meta,                     
-    cfg                       
+    *,
+    user_likes: str | None = None,
+    user_dislikes: str | None = None,
 ) -> str:
     """
-    Build the final prompt string fed to the LLM.
+    Build the prompt string for the LLM judge.
 
     Parameters
     ----------
-    list_a, list_b : sequences of item identifiers / titles
-    meta, cfg      : available for future contextualisation (user ID, locale…)
+    list_a / list_b : ordered sequences of product titles or IDs.
+    user_likes      : free‑text summary of items the user purchased / liked.
+    user_dislikes   : free‑text summary of items the user disliked / returned.
+                      Pass None to skip user‑context mode.
 
     Returns
     -------
-    str : ready‑to‑send prompt
+    str : ready‑to‑send prompt.
     """
-    return _PROMPT_TEMPLATE.format(
-        list1=", ".join(map(str, list_a)),
-        list2=", ".join(map(str, list_b)),
-    )
+    list1 = ", ".join(map(str, list_a))
+    list2 = ", ".join(map(str, list_b))
+
+    if user_likes is not None and user_dislikes is not None:
+        return _WITH_CTX.format(
+            list1=list1,
+            list2=list2,
+            user_likes=user_likes or "(no data provided)",
+            user_dislikes=user_dislikes or "(no data provided)",
+        )
+    else:
+        return _NO_CTX.format(list1=list1, list2=list2)
