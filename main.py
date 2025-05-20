@@ -104,15 +104,10 @@ def main() -> None:
                 metrics_map[bl_name][metric_name] = score
 
     if global_metrics:
-        print('in global metrics')
         seq_view = SequenceView(raw_results, canon_df)
-        print('seq view')
         for metric_name, MetricCls in global_metrics.items():
-            print('in for')
             metric_obj = MetricCls(cfg)                       
-            print('obj')
             scores = metric_obj(seq_view, cfg)               
-            print('scores')
             for bl, val in scores.items():
                 metrics_map.setdefault(bl, {})[metric_name] = val
     print('there')
