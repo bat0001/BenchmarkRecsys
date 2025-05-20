@@ -60,11 +60,11 @@ def main() -> None:
 
     # 3) run baselines
     active = {
-        "abtest":   cfg.abtest,
-        "ucb":      cfg.ucb,
-        "thompson": cfg.thompson,
-        "epsilon":  cfg.epsilon_greedy,
-        "random":   cfg.random_baseline,
+        "abtest":   cfg.bandit.baselines.abtest,
+        "ucb":      cfg.bandit.baselines.ucb,
+        "thompson": cfg.bandit.baselines.thompson,
+        "epsilon":  cfg.bandit.baselines.epsilon,
+        "random":   cfg.bandit.baselines.random,
     }
 
     cfg.baselines = [k for k, v in active.items() if v]
