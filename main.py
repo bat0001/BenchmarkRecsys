@@ -4,8 +4,6 @@ from typing     import Dict
 from wandb      import Table
 from tabulate   import tabulate
 
-
-
 from utils.device                import DEVICE
 from utils.config                import get_config
 from utils.seed                  import set_seed
@@ -90,42 +88,37 @@ def main() -> None:
         if raw:
             raw_results[name] = raw
 
-    # ------------------------------------------------------------------
     metric_classes = get_metric_classes()
 
-    # Sépare métriques locales ↔ globales
     local_metrics   = {n: c for n, c in metric_classes.items()
                     if not getattr(c, "global_metric", False)}
     global_metrics  = {n: c for n, c in metric_classes.items()
                     if getattr(c, "global_metric", False)}
 
-    # ----------- 3‑a  MÉTRIQUES LOCALES (une baseline à la fois) -----
     for bl_name, raw in raw_results.items():
         metrics_map.setdefault(bl_name, {})
         for metric_name, MetricCls in local_metrics.items():
-            metric_obj = MetricCls(cfg)                       #   instanciation
-            score      = metric_obj(canon_df, raw, cfg)       #   calcul
+            metric_obj = MetricCls(cfg)                       
+            score      = metric_obj(canon_df, raw, cfg)          
             if isinstance(score, dict):
                 metrics_map[bl_name].update(score)
             else:
                 metrics_map[bl_name][metric_name] = score
 
-    # ----------- 3‑b  MÉTRIQUES GLOBALES (plusieurs baselines) -------
     if global_metrics:
         print('in global metrics')
         seq_view = SequenceView(raw_results, canon_df)
         print('seq view')
         for metric_name, MetricCls in global_metrics.items():
             print('in for')
-            metric_obj = MetricCls(cfg)                       # ex. LLMPreferenceBT
+            metric_obj = MetricCls(cfg)                       
             print('obj')
-            scores = metric_obj(seq_view, cfg)                # retourne {bl: val}
+            scores = metric_obj(seq_view, cfg)               
             print('scores')
             for bl, val in scores.items():
                 metrics_map.setdefault(bl, {})[metric_name] = val
     print('there')
     
-    # ------------------------------------------------------------------
 
     log_comparison(metrics_map)
 
