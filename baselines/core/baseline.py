@@ -11,7 +11,7 @@ class BaseBaseline(ABC):
     """
     def __init__(self, cfg):
         self.cfg = cfg
-        self.out_dir = Path(cfg.out_dir).expanduser()
+        self.out_dir = Path(cfg.core.out_dir).expanduser()
         self.out_dir.mkdir(parents=True, exist_ok=True)
         self.device = DEVICE
 
