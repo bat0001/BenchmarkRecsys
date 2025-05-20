@@ -15,7 +15,7 @@ class LLMPreferenceBT(BaseMetric):
     def __init__(self, cfg):
         super().__init__(cfg)
         self.judge = LLMJudgeHFPref(cfg.llm.model,
-                                    temperature=max(0.1, cfg.llm_temperature))
+                                    temperature=max(0.1, cfg.llm.temperature))
 
     def requires_predictions(self) -> bool:
         return False
