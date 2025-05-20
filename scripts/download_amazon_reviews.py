@@ -9,7 +9,6 @@ OUTPUT_DIR = os.path.join(os.path.dirname(__file__), '..', 'data', 'amazon_revie
 
 
 def main():
-    # 1) Download the dataset
     print(f"Downloading dataset {DATASET_ID}...")
     archive_path = kagglehub.dataset_download(DATASET_ID)
     print(f"Downloaded archive: {archive_path}")
