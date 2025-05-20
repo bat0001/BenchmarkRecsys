@@ -54,7 +54,6 @@ def main() -> None:
     formatter = get_formatter(cfg.dataset)
     canon_df  = formatter(raw_df, cfg)  
 
-    # 3) run baselines
     active = {
         "abtest":   cfg.bandit.baselines.abtest,
         "ucb":      cfg.bandit.baselines.ucb,
