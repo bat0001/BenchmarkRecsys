@@ -108,9 +108,7 @@ def main() -> None:
             metric_obj = MetricCls(cfg)                       
             scores = metric_obj(seq_view, cfg)               
             for bl, val in scores.items():
-                metrics_map.setdefault(bl, {})[metric_name] = val
-    print('there')
-    
+                metrics_map.setdefault(bl, {})[metric_name] = val    
 
     log_comparison(metrics_map)
 
