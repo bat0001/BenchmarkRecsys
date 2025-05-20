@@ -36,9 +36,21 @@ def _load_amazon(cfg):
 
     return df, None, None, None 
 
+def _load_amazon_sales(cfg):
+    csv_path = Path(cfg.data.amazon_sales_path).expanduser()
+    df = pd.read_csv(csv_path)
+
+    if cfg.data.amazon_sales_subset > 0:
+        df = df.sample(cfg.data.amazon_sales_subset, random_state=cfg.core.seed)
+
+    objectives, class_names, class_idx = {}, [], {}
+    return df, objectives, class_names, class_idx
+
+
 DATASET_FACTORY = {
     "COCO": _load_coco,
     "CIFAR-10": _load_cifar,
     "CIFAR-100": _load_cifar,
-    "AMAZON": _load_amazon
+    "AMAZON": _load_amazon,
+    "AMAZON_SALES": _load_amazon_sales,
 }
