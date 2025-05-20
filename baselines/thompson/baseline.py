@@ -21,8 +21,8 @@ class ThompsonBaseline(BaseBaseline):
         *,
         item_col: str = "productId",
         reward_col: str = "reward",
-        min_pos: int = 5,
-        max_items: int = 10_000,
+        min_pos: int = 3,
+        max_items: int = 1000,
     ):
         """
         Pre‑compute the ‘bank’ of historical rewards for each item.
