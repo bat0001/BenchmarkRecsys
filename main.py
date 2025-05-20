@@ -1,10 +1,9 @@
 from __future__ import annotations
-import argparse, numpy as np, pandas as pd, matplotlib.pyplot as plt, torch, wandb, sys
+import argparse, pandas as pd, wandb
 from typing     import Dict
 from wandb      import Table
 from tabulate   import tabulate
 
-from utils.device                import DEVICE
 from utils.config                import get_config
 from utils.seed                  import set_seed
 from utils.logger                import init_wandb_
@@ -15,7 +14,6 @@ from datasets.loader             import DATASET_FACTORY
 from baselines                   import BASELINE_REGISTRY
 from utils.plots                 import plot_fraction_relevant_curves
 
-from utils.llm.registry import get_judge
 
 def log_comparison(metrics: Dict[str, Dict[str, float]]):
     all_keys = sorted({k for m in metrics.values() for k in m.keys()})
