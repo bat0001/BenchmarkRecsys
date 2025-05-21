@@ -75,7 +75,7 @@ class LinUCBBaseline(BaseBaseline):
         for v in tqdm(range(n_visits), desc="[LinUCB] replay"):
             scores = [self._ucb(i, alpha) for i in self.items]
             idx    = int(np.argmax(scores))      
-            key    = self.item_keys[idx]            # identifiant réel
+            key    = self.item_keys[idx]            
 
             r      = int(rng.choice(self.bank[idx]))
 
