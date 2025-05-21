@@ -1,94 +1,94 @@
-from __future__ import annotations
-import numpy as np, pandas as pd, torch
-from typing import Dict, List
+from tqdm import tqdm
+import numpy as np
+import pandas as pd
 from baselines.core.baseline import BaseBaseline
-from utils.device import DEVICE           
+from utils.features import build_feature_matrix
+
 
 class LinUCBBaseline(BaseBaseline):
     """
-    Contextual‑bandit baseline (Li et al. 2010).
-
-    • context  x_i ∈ ℝ^d   (here : item features)
-    • per‑arm A_i = d×d gram matrix,  b_i = d vector
+    Contexte = features (num + cat + texte)  →  LinUCB (Li et al. 2010).
     """
 
-    def _build_model(self):
+    def _build_model(self):      
         return None
 
-    def offline_fit(self,
-                    df: pd.DataFrame,
-                    ctx_cols: List[str] | None = None,
+    def _row_dense(self, idx: int) -> np.ndarray:
+        row = self.X[idx]
+        return row.toarray().ravel() if hasattr(row, "toarray") else row
+
+    def offline_fit(self, canon_df: pd.DataFrame,
                     item_col: str = "productId",
-                    reward_col: str = "reward"):
-        """
-        Pre‑compute one fixed context vector per item.
+                    reward_col: str = "reward",
+                    min_pos: int = 1,
+                    max_items: int = 5_000):
 
-        Parameters
-        ----------
-        ctx_cols    : columns used as numerical context.
-                      If None → one‑hot on item_id (⇒ reduces to classic UCB)
-        """
-        self.item_col   = item_col
-        self.reward_col = reward_col
+        pos_cnt = canon_df[canon_df[reward_col] == 1][item_col].value_counts()
+        keep_ids = pos_cnt[pos_cnt >= min_pos].index[:max_items]
 
-        if ctx_cols is None:                     
-            items = df[item_col].unique()
-            eye   = np.eye(len(items))
-            self.context = {it: eye[k]
-                            for k, it in enumerate(items)}
-        else:
-            ctx = (df
-                   .drop_duplicates(item_col)
-                   .set_index(item_col)[ctx_cols])
+        df = canon_df[canon_df[item_col].isin(keep_ids)].reset_index(drop=True)
+        self.df = df                                    
 
-            ctx = (ctx - ctx.mean()) / ctx.std().replace(0, 1)
-            self.context = {it: row.to_numpy(float)
-                            for it, row in ctx.iterrows()}
+        self.items       = list(range(len(df)))         
+        self.item_keys   = df[item_col].tolist()        
 
-        self.d = next(iter(self.context.values())).shape[0]
-        self.items = list(self.context.keys())
-        self.n_items = len(self.items)
+        self.bank = {i: df.loc[df.index == i, reward_col].to_numpy(np.int8)
+                     for i in self.items}
 
-        self.A  = {it: np.eye(self.d)           for it in self.items}
-        self.b  = {it: np.zeros(self.d)         for it in self.items}
+        self.X = build_feature_matrix(df).astype(np.float32)
+        if hasattr(self.X, "toarray"):      
+            self.X = self.X.toarray()      
 
-        self.bank = {it: df.loc[df[item_col] == it, reward_col]
-                          .to_numpy(np.int8)
-                     for it in self.items}
+        d = self.X.shape[1]
+        self.A_inv = {i: np.eye(d) for i in self.items} 
+        self.b      = {i: np.zeros(d) for i in self.items}
+
         return self
 
-    def _ucb_score(self, it: str, alpha: float):
-        A_inv = np.linalg.inv(self.A[it])
-        theta = A_inv @ self.b[it]
-        x     = self.context[it]
-        return theta @ x + alpha * np.sqrt(x @ A_inv @ x)
+    def _ucb(self, idx, alpha):
+        A_inv = self.A_inv[idx]
+        theta = A_inv @ self.b[idx]
+        # x     = self.X[idx]
+        x = self._row_dense(idx)
+        mu    = float(theta @ x)
+        var   = float(np.sqrt(x @ A_inv @ x))
+        return mu + alpha * var
+
+    @staticmethod
+    def _sm_update(A_inv, x):
+        # Sherman‑Morrison one‑rank update
+        Ax = A_inv @ x
+        denom = 1.0 + x @ Ax
+        A_inv_new = A_inv - np.outer(Ax, Ax) / denom
+        return A_inv_new
 
     def online_simulate(self,
                         n_visits: int,
+                        *,
                         alpha: float | None = None,
                         return_raw: bool = True):
-        """
-        Simulate LinUCB for `n_visits` steps on historical log.
-        """
-        if alpha is None:
-            alpha = getattr(self.cfg, "linucb_alpha", 1.0)
 
-        rng, results, cum = np.random.default_rng(self.cfg.seed), [], 0.0
+        alpha = alpha or getattr(self.cfg, "linucb_alpha", 1.0)
+        rng   = np.random.default_rng(self.cfg.seed)
 
-        for v in range(n_visits):
-            scores = [self._ucb_score(it, alpha) for it in self.items]
-            it     = self.items[int(np.argmax(scores))]
+        results, cum = [], 0.0
+        for v in tqdm(range(n_visits), desc="[LinUCB] replay"):
+            scores = [self._ucb(i, alpha) for i in self.items]
+            idx    = int(np.argmax(scores))      
+            key    = self.item_keys[idx]            # identifiant réel
 
-            r = int(rng.choice(self.bank[it]))
+            r      = int(rng.choice(self.bank[idx]))
 
-            x = self.context[it]
-            self.A[it] += np.outer(x, x)
-            self.b[it] += r * x
+            # x = self.X[idx]
+            x = self._row_dense(idx)
+            self.A_inv[idx] = self._sm_update(self.A_inv[idx], x)
+            self.b[idx]    += r * x
 
             cum += r
             results.append(dict(
                 visit=v,
-                item_id=it,
+                row_idx=idx,
+                item_key=key,
                 reward=r,
                 fraction_relevant=cum / (v + 1)
             ))
