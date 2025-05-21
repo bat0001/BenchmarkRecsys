@@ -93,5 +93,14 @@ class LinUCBBaseline(BaseBaseline):
                 fraction_relevant=cum / (v + 1)
             ))
 
-        metrics = {"CTR": cum / n_visits}
+    
+        rewards = [r["reward"] for r in results]
+        metrics = {
+            "CTR":          cum / n_visits,
+            "Reward Mean":  np.mean(rewards),
+            "Reward Median":np.median(rewards),
+            "Reward Min":   int(np.min(rewards)),
+            "Reward Max":   int(np.max(rewards)),
+        }
+
         return (metrics, results) if return_raw else metrics
