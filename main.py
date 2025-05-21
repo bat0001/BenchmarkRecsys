@@ -73,7 +73,6 @@ def main() -> None:
             continue
         bl_cls   = BASELINE_REGISTRY[name]
         
-        print(canon_df.head(0))
         baseline = bl_cls(cfg).offline_fit(canon_df)
         res = baseline.online_simulate(cfg.num_iterations)
 
