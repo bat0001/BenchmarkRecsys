@@ -9,24 +9,26 @@ core:
 #  Data & preprocessing
 # --------------------------------------------------------------------
 data:
-  dataset:        AMAZON                # {CIFAR‑10,CIFAR‑100,COCO,AMAZON,…}
-  amazon_path:    data/amazon_reviews/1/ratings_Electronics (1).csv
-  amazon_min_pos: 5
-  amazon_subset:  7_000                 # -1  ⇒ keep all rows
+  dataset:        AMAZON_SALES                # {CIFAR‑10,CIFAR‑100,COCO,AMAZON,…}
+  amazon_sales_path:    data/amazon_sales/1/amazon.csv
+  amazon_sales_min_pos: 0
+  amazon_sales_subset:  -1             # -1  ⇒ keep all rows
   reward_threshold: 4.0                 # rating > threshold → reward=1
 
 # --------------------------------------------------------------------
 #  Bandit & baseline settings
 # --------------------------------------------------------------------
 bandit:
-  num_iterations: 1000                  # online visits
-  max_items:      100
+  num_iterations: 1                  # online visits
+  max_items:      1
   baselines:                       # true → active
     abtest:     false
     ucb:        true
     thompson:   true
     epsilon:    false
     random:     false
+    linucb:     true
+  linucb_alpha: 1.0
   ucb_c:           2.0
   epsilon:         0.10
 
