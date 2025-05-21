@@ -9,7 +9,8 @@ class BaseFormatter(ABC):
         • reward     (float)   0/1   or any scalar
         • Optional extra columns (embedding, timestamp, …)
     """
-
+    item_key: str = NotImplemented
+    
     @abstractmethod
     def __call__(self, raw: any, cfg) -> pd.DataFrame:
         ...
