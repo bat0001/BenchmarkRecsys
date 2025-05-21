@@ -4,6 +4,7 @@ from baselines.bandit.linucb_baseline import LinUCBBaseline
 from baselines.gfn.gfn_baseline import ClassicalGFNBaseline
 from baselines.thompson.baseline import ThompsonBaseline
 from baselines.epsilon.baseline import EpsilonGreedyBaseline
+from baselines.linucb.baseline import LinUCBBaseline
 
 BASELINE_REGISTRY = {
     # "gfn_classical": ClassicalGFNBaseline,
@@ -11,4 +12,5 @@ BASELINE_REGISTRY = {
     "thompson": ThompsonBaseline,
     # "epsilon":   EpsilonGreedyBaseline,
     "ucb":    UCBBaseline,
+    "linucb":     LinUCBBaseline,
 }
