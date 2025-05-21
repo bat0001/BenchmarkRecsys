@@ -1,19 +1,28 @@
 import random
 from typing import List
 
+def _get_item_id(rec: dict) -> str | int | None:
+    for k in ("item_key", "item_id", "item_idx", "productId"):
+        if k in rec:
+            return rec[k]
+    return None 
+
 def _final_sequence(records: List[dict], visit: int) -> List[int]:
     if not records:
         return []
-    return [r["item_idx"] for r in records if r["visit"] == visit]
+    print(records)
+    return [
+        _get_item_id(r)
+        for r in records
+        if r.get("visit") == visit and _get_item_id(r) is not None
+    ]
 
 def sample_pairs(raw_results: dict[str, list[dict]],
                  n_pairs: int,
-                 final_visit: int):
-    """
-    Tire au plus `n_pairs` couples distincts de baselines et renvoie
-    pour chacun les séquences finales correspondantes.
-    """
-
+                 final_visit: int,
+                 *,
+                 keys
+                 ):
     baselines = list(raw_results)
     max_pairs = len(baselines) * (len(baselines) - 1) // 2
     n_pairs   = min(n_pairs, max_pairs)         
@@ -21,15 +30,15 @@ def sample_pairs(raw_results: dict[str, list[dict]],
     pairs, seen = [], set()
     while len(pairs) < n_pairs:
         a, b = random.sample(baselines, 2)
-        key  = tuple(sorted((a, b)))
-        if key in seen:
+
+        pair_id = tuple(sorted((a, b)))
+        if pair_id in seen:
             continue
-        seen.add(key)
+        seen.add(pair_id)
 
         seq_a = _final_sequence(raw_results[a], final_visit)
         seq_b = _final_sequence(raw_results[b], final_visit)
-        if seq_a and seq_b:                    
+
+        if seq_a and seq_b:                                
             pairs.append((a, b, seq_a, seq_b))
-
-
     return pairs
