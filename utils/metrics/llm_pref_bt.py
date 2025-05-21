@@ -30,7 +30,7 @@ class LLMPreferenceBT(BaseMetric):
         pairs = sample_pairs(seq_view.raw,
                      cfg.llm.bt_pairs,
                      final_visit,
-                     key=seq_view.item_key)
+                     keys=seq_view.item_key)
         for bi, bj, seq_i, seq_j in pairs:
             win = self.judge.compare(seq_i, seq_j, meta=None, cfg=cfg)
             winner, loser = (bi, bj) if win == 0 else (bj, bi)
