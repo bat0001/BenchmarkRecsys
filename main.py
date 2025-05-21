@@ -60,6 +60,7 @@ def main() -> None:
         "thompson": cfg.bandit.baselines.thompson,
         "epsilon":  cfg.bandit.baselines.epsilon,
         "random":   cfg.bandit.baselines.random,
+        "linucb":   cfg.bandit.baselines.linucb
     }
 
     cfg.baselines = [k for k, v in active.items() if v]
@@ -128,6 +129,7 @@ def main() -> None:
             "ucb":      "UCB",
             "thompson": "Thompson Sampling",
             "epsilon":  r"$\epsilon$-Greedy",
+            "linucb": "linucb",
             "random":   "Random"
         }
         fig_ctr = plot_fraction_relevant_curves(ctr_curves, styles, labels)
