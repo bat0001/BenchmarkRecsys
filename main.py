@@ -53,6 +53,7 @@ def main() -> None:
     raw_df, objectives, class_names, class_idx = DATASET_FACTORY[cfg.dataset](cfg)
     formatter = get_formatter(cfg.dataset)
     canon_df  = formatter(raw_df, cfg)  
+    item_key  = formatter.item_key
 
     active = {
         "abtest":   cfg.bandit.baselines.abtest,
@@ -71,9 +72,8 @@ def main() -> None:
         if not on:
             continue
         bl_cls   = BASELINE_REGISTRY[name]
-
         
-
+        print(canon_df.head(0))
         baseline = bl_cls(cfg).offline_fit(canon_df)
         res = baseline.online_simulate(cfg.num_iterations)
 
@@ -104,7 +104,7 @@ def main() -> None:
                 metrics_map[bl_name][metric_name] = score
 
     if global_metrics:
-        seq_view = SequenceView(raw_results, canon_df)
+        seq_view  = SequenceView(raw_results, canon_df, item_key=item_key)
         for metric_name, MetricCls in global_metrics.items():
             metric_obj = MetricCls(cfg)                       
             scores = metric_obj(seq_view, cfg)               
