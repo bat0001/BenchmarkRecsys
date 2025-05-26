@@ -53,6 +53,8 @@ def main() -> None:
     raw_df, objectives, class_names, class_idx = DATASET_FACTORY[cfg.dataset](cfg)
     formatter = get_formatter(cfg.dataset)
     canon_df  = formatter(raw_df, cfg)  
+    print(canon_df.head())
+    # print(canon_df.user_id.value_counts())
     item_key  = formatter.item_key
 
     active = {
@@ -61,7 +63,8 @@ def main() -> None:
         "thompson": cfg.bandit.baselines.thompson,
         "epsilon":  cfg.bandit.baselines.epsilon,
         "random":   cfg.bandit.baselines.random,
-        "linucb":   cfg.bandit.baselines.linucb
+        "linucb":   cfg.bandit.baselines.linucb,
+        "bpr":      cfg.bandit.baselines.bpr
     }
 
     cfg.baselines = [k for k, v in active.items() if v]
