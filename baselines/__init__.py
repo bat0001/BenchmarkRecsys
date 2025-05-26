@@ -4,6 +4,7 @@ from baselines.gfn.gfn_baseline import ClassicalGFNBaseline
 from baselines.thompson.baseline import ThompsonBaseline
 from baselines.epsilon.baseline import EpsilonGreedyBaseline
 from baselines.linucb.baseline import LinUCBBaseline
+from baselines.bpr.baseline import BPRBaseline 
 
 BASELINE_REGISTRY = {
     # "gfn_classical": ClassicalGFNBaseline,
@@ -12,4 +13,5 @@ BASELINE_REGISTRY = {
     # "epsilon":   EpsilonGreedyBaseline,
     "ucb":    UCBBaseline,
     "linucb":     LinUCBBaseline,
+    "bpr": BPRBaseline
 }
