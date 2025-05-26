@@ -1,7 +1,7 @@
 import pandas as pd, numpy as np, re, warnings
-from sklearn.preprocessing   import MinMaxScaler, OneHotEncoder
+from sklearn.preprocessing   import MinMaxScaler, OneHotEncoder, StandardScaler
 from sklearn.feature_extraction.text import TfidfVectorizer
-from scipy import sparse
+from scipy import sparse as sp
 
 _NUM_CUTOFF_CAT = 100          
 _TXT_MIN_LEN    = 100          
@@ -13,39 +13,24 @@ def _is_floatish(s):
     except Exception:
         return False
 
-def build_feature_matrix(df: pd.DataFrame,
-                         use_cols: list[str] | None = None,
-                         dropna: bool = True) -> np.ndarray:
-    if use_cols is None:
-        use_cols = [c for c in df.columns if c.startswith("meta_")]
+def build_feature_matrix(df: pd.DataFrame) -> sp.csr_matrix:
+    """
+    •  One‑hot‑encode genres               (max 20)
+    •  Normalised log(#ratings)            (popularity)
+    •  Mean user rating (z‑score)          (quality)
+    Result → csr_matrix [N, d]
+    """
 
-    mats = []
-    for col in use_cols:
-        s = df[col]
-        if s.dtype.kind in "biufc" or all(_is_floatish(x) for x in s.head(20)):
-            arr = s.astype(float).to_numpy().reshape(-1, 1)
-            mats.append(MinMaxScaler().fit_transform(arr))
-        else:
-            uniq = s.fillna("NA").unique()
-            if len(uniq) <= _NUM_CUTOFF_CAT and all(len(x) < _TXT_MIN_LEN for x in uniq):
-                enc = OneHotEncoder(handle_unknown="ignore", sparse=True)
-                mats.append(enc.fit_transform(s.fillna("NA").array.reshape(-1, 1)))
-            else:
-                vect = TfidfVectorizer(stop_words="english",
-                                       max_features=2_000)
-                mats.append(vect.fit_transform(s.fillna("").values))
 
-    if not mats:
-        warnings.warn("No meta cols exploitable -- return zeros")
-        X = np.zeros((len(df), 1))
-    else:
-        X = sparse.hstack(mats).tocsr() if any(sparse.issparse(m) for m in mats) \
-            else np.hstack(mats)
+    genre_lists = df["genres"].str.split("|")
+    all_genres  = sorted({g for lst in genre_lists for g in lst})
+    enc = OneHotEncoder(sparse=True, handle_unknown="ignore")
+    G   = enc.fit_transform(genre_lists.apply(lambda l: [all_genres.index(g) for g in l]))
 
-    if dropna:
-        mask = np.array(X.sum(axis=1)).ravel() > 0
-        if not mask.all():
-            X = X[mask]
-            warnings.warn(f"{(~mask).sum()} items without features have been ignored.")
+    pop  = np.log1p(df.groupby("item_id").size()).to_numpy().reshape(-1, 1)
+    mean = df.groupby("item_id")["rating"].mean().fillna(0).to_numpy().reshape(-1, 1)
+    scaler = StandardScaler(with_mean=False)
+    X_num  = scaler.fit_transform(np.hstack([pop, mean]))    
 
+    X = sp.hstack([G, sp.csr_matrix(X_num)], format="csr")
     return X
