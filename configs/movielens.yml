@@ -1,0 +1,31 @@
+core:
+  seed: 42
+  out_dir: outputs/
+
+data:
+  dataset: MOVIELENS20M
+  path:    data/movielens/1
+  movielens_root: data/movielens/1
+
+bandit:
+  num_iterations: 100
+  baselines:
+    abtest:   false
+    epsilon:  false
+    pop:      true
+    bpr:      true
+    ucb:      false
+    thompson: false
+    linucb:   false
+    random:   false
+
+llm:
+  model:  meta-llama/Llama-3.2-1B-Instruct
+  device: cuda:0
+  bt_pairs: 20
+  temperature: 0.7
+
+wandb:
+  project:        BenchmarkRecSys
+  run_name:       BenchmarkRecSys
+  log_recs:       true
