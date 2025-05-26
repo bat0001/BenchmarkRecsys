@@ -51,6 +51,7 @@ def _load_movielens20m(cfg):
     dfs  = {
         "ratings": pd.read_csv(f"{path}/rating.csv"),
         "movies" : pd.read_csv(f"{path}/movie.csv"),
+        "tags": pd.read_csv(f'{path}/tag.csv')
     }
     return dfs, None, None, None          
 
