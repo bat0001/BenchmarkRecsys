@@ -27,7 +27,6 @@ def main():
 
     print("Movielens20M dataset is ready for use!")
 
-p
 if __name__ == '__main__':
     try:
         main()
