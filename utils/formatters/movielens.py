@@ -1,4 +1,6 @@
+from __future__ import annotations
 import pandas as pd
+
 from utils.formatters.base import BaseFormatter
 from utils.formatters.registry import register
 
@@ -14,20 +16,44 @@ class MovieLensFormatter(BaseFormatter):
     """
 
     def __call__(self, raw_dfs: dict[str, pd.DataFrame], cfg):
-        ratings = raw_dfs["ratings"]                 
-        movies  = raw_dfs["movies"]                  
+        ratings = raw_dfs["ratings"]      # userId, movieId, rating, timestamp
+        movies  = raw_dfs["movies"]       # movieId, title, genres
+        tags    = raw_dfs.get("tags")     # facultatif : userId, movieId, tag …
 
-        #TODO maybe change this binary reward (≥ threshold)
         thr = float(cfg.data.get("reward_threshold", 4.0))
+        ratings = ratings.copy()
         ratings["reward"] = (ratings["rating"] >= thr).astype(int)
 
-        canon = ratings[["movieId", "userId", "reward"]].rename(
+        canon = ratings.rename(
             columns={"movieId": "item_id", "userId": "user_id"}
-        )
+        )[["item_id", "user_id", "reward"]]
 
         canon = canon.merge(
-            movies[["movieId", "title", "genres"]], how="left",
-            left_on="item_id", right_on="movieId"
-        ).drop(columns="movieId")                      
+            movies[["movieId", "title", "genres"]]
+                  .rename(columns={"movieId": "item_id"}),
+            on="item_id",
+            how="left",
+        )
+
+        if tags is not None and len(tags):
+            tag_col = "tag" if "tag" in tags.columns else "review_title"
+
+            COL_MAP = {
+                "movieId":   "item_id",
+                "productId": "item_id",
+                "product_id": "item_id",
+            }
+            tags_agg = (
+                tags                                     
+                .rename(columns={k: v for k, v in COL_MAP.items() if k in tags.columns})
+                .groupby("item_id")[tag_col]
+                .apply(lambda s: "|".join(s.astype(str).str.lower().unique()))
+                .reset_index(name="tags")
+            )
+
+            canon = canon.merge(tags_agg, on="item_id", how="left")
+        canon[["title", "genres", "tags"]] = (
+            canon[["title", "genres", "tags"]].fillna("")
+        )
 
         return canon
