@@ -46,6 +46,14 @@ def _load_amazon_sales(cfg):
     objectives, class_names, class_idx = {}, [], {}
     return df, objectives, class_names, class_idx
 
+def _load_movielens20m(cfg):
+    path = cfg.data.movielens_root        
+    dfs  = {
+        "ratings": pd.read_csv(f"{path}/rating.csv"),
+        "movies" : pd.read_csv(f"{path}/movie.csv"),
+    }
+    return dfs, None, None, None          
+
 
 DATASET_FACTORY = {
     "COCO": _load_coco,
@@ -53,4 +61,5 @@ DATASET_FACTORY = {
     "CIFAR-100": _load_cifar,
     "AMAZON": _load_amazon,
     "AMAZON_SALES": _load_amazon_sales,
+    "MOVIELENS20M": _load_movielens20m
 }
