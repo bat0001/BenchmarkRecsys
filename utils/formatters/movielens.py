@@ -57,3 +57,38 @@ class MovieLensFormatter(BaseFormatter):
         )
 
         return canon
+    
+@register("MOVIELENS1M")
+class MovieLens1MFormatter(BaseFormatter):
+    """
+    Canonical columns after formatting
+    ----------------------------------
+    item_id   : movieId  (int)
+    user_id   : userId   (int)
+    reward    : 0 / 1    (binary like‑click)
+    meta.*    : any extra useful columns (title, genres …)
+    """
+
+    def __call__(self, raw_dfs: dict[str, pd.DataFrame], cfg):
+        ratings = raw_dfs["ratings"]      
+        movies  = raw_dfs["movies"]      
+
+        thr = float(cfg.data.get("reward_threshold", 4.0))
+        ratings = ratings.copy()
+        ratings["reward"] = (ratings["rating"] >= thr).astype(int)
+
+        canon = ratings.rename(
+            columns={"movieId": "item_id", "userId": "user_id"}
+        )[["item_id", "user_id", "reward"]]
+
+        canon = canon.merge(
+            movies.rename(columns={"movieId": "item_id"}),
+            on="item_id",
+            how="left",
+        )
+
+        for col in ["title", "genres"]:
+            if col in canon.columns:
+                canon[col] = canon[col].fillna("")
+
+        return canon
