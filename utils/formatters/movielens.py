@@ -16,9 +16,9 @@ class MovieLensFormatter(BaseFormatter):
     """
 
     def __call__(self, raw_dfs: dict[str, pd.DataFrame], cfg):
-        ratings = raw_dfs["ratings"]      # userId, movieId, rating, timestamp
-        movies  = raw_dfs["movies"]       # movieId, title, genres
-        tags    = raw_dfs.get("tags")     # facultatif : userId, movieId, tag …
+        ratings = raw_dfs["ratings"]      
+        movies  = raw_dfs["movies"]      
+        tags    = raw_dfs.get("tags")     
 
         thr = float(cfg.data.get("reward_threshold", 4.0))
         ratings = ratings.copy()
