@@ -55,6 +55,36 @@ def _load_movielens20m(cfg):
     }
     return dfs, None, None, None          
 
+def _load_movielens1m(cfg):
+    """
+    Reads MovieLens‑1M .dat files ( ‘::’‑separated ) and returns
+    dict[str, pd.DataFrame] compatible with the formatter above.
+    """
+
+    path = cfg.data.movielens_root.rstrip("/")
+
+    ratings = pd.read_csv(
+        f"{path}/ratings.dat",
+        sep="::",
+        engine="python",
+        names=["userId", "movieId", "rating", "timestamp"],
+        encoding="latin-1",
+    )
+
+    movies = pd.read_csv(
+        f"{path}/movies.dat",
+        sep="::",
+        engine="python",
+        names=["movieId", "title", "genres"],
+        encoding="latin-1",
+    )
+
+    dfs = {
+        "ratings": ratings,
+        "movies":  movies,
+    }
+
+    return dfs, None, None, None
 
 DATASET_FACTORY = {
     "COCO": _load_coco,
@@ -62,5 +92,6 @@ DATASET_FACTORY = {
     "CIFAR-100": _load_cifar,
     "AMAZON": _load_amazon,
     "AMAZON_SALES": _load_amazon_sales,
+    "MOVIELENS1M": _load_movielens1m,    
     "MOVIELENS20M": _load_movielens20m
 }
