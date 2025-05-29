@@ -134,7 +134,6 @@ def main() -> None:
                 metrics_map[bl_name][metric_name] = score
 
     if global_metrics:
-        print('GLOBAL')
         # seq_view  = SequenceView(raw_results, canon_df, item_key=item_key)
         seq_view = SequenceView(
             raw_results,
@@ -144,7 +143,6 @@ def main() -> None:
         )
 
         for metric_name, MetricCls in global_metrics.items():
-            print(f'Metric name -- {metric_name}')
             metric_obj = MetricCls(cfg)                       
             scores = metric_obj(seq_view, cfg)               
             for bl, val in scores.items():
