@@ -6,5 +6,6 @@ from utils.metrics.registry  import register
 class DiversityMetric(BaseMetric):
     def requires_predictions(self): return False
     def __call__(self, canon_df: pd.DataFrame, y_pred, cfg):
-        uniq = canon_df["productId"].nunique()
-        return "Item Diversity", uniq / len(canon_df)
+        pass
+        # uniq = canon_df["productId"].nunique()
+        # return "Item Diversity", uniq / len(canon_df)
