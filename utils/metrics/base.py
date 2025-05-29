@@ -33,10 +33,11 @@ class SequenceView:
         raw  : { baseline → list[dict] }  (online_simulate)
         meta : canon_df (optionnel)
     """
-    def __init__(self, raw, meta, *, item_key: str):
-        self.raw      = raw
-        self.meta     = meta
-        self.item_key = item_key
+    def __init__(self, raw, canon_df, *, item_key, user_profiles=None):
+        self.raw           = raw
+        self.canon_df      = canon_df
+        self.item_key      = item_key
+        self.user_profiles = user_profiles or {}
 
 class SequenceMetric(ABC):
     """Base for metrics which look final sqeuence / raw."""
