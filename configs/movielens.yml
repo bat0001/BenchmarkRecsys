@@ -3,7 +3,7 @@ core:
   out_dir: outputs/
 
 data:
-  dataset: MOVIELENS20M
+  dataset: MOVIELENS1M
   path:    data/movielens/1
   movielens_root: data/movielens/1
 
@@ -17,6 +17,7 @@ bandit:
     ucb:      false
     thompson: false
     linucb:   false
+    neuMF:    true
     random:   false
 
 llm:
