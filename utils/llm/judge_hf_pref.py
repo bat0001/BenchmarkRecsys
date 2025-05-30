@@ -54,7 +54,7 @@ class LLMJudgeHFPref:
             user_likes=user_likes,
             user_dislikes=user_dislikes,
         )
-        print(prompt)
+        # print(prompt)
         if (v := get_cached(prompt)) is not None:
             return v ^ flip
 
