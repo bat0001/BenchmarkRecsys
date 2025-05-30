@@ -104,15 +104,23 @@ def main() -> None:
         baseline = BASELINE_REGISTRY[name](cfg)
 
         # met_off, raw_off = baseline.fit(canon_df)
-        met_off, raw_off = baseline.fit(train_df) 
-        if isinstance(baseline, OnlineMixin):
-            met_onl, raw_onl = baseline.online_simulate(cfg.num_iterations)
-            met_off.update(met_onl)
-            raw_off = raw_onl if raw_onl else raw_off
+        # met_off, raw_off = baseline.fit(train_df) 
+        _ = baseline.fit(train_df)
+        raw_off = baseline.predict_sequences(
+            test_df,
+            top_k      = getattr(cfg, "eval_topk", 10),
+            visit_id   = cfg.num_iterations - 1
+        )
+        metrics_map[name] = {}               # (pas de métriques locales ici)
+        raw_results[name] = raw_off
+        # if isinstance(baseline, OnlineMixin):
+        #     met_onl, raw_onl = baseline.online_simulate(cfg.num_iterations)
+        #     met_off.update(met_onl)
+        #     raw_off = raw_onl if raw_onl else raw_off
 
-        metrics_map[name] = met_off
-        if raw_off:
-            raw_results[name] = raw_off
+        # metrics_map[name] = met_off
+        # if raw_off:
+        #     raw_results[name] = raw_off
 
     metric_classes = get_metric_classes()
 
