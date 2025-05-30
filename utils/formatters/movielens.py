@@ -75,8 +75,9 @@ class MovieLens1MFormatter(BaseFormatter):
 
         thr = float(cfg.data.get("reward_threshold", 4.0))
         ratings = ratings.copy()
-        ratings["reward"] = (ratings["rating"] >= thr).astype(int)
-
+        # ratings["reward"] = (ratings["rating"] >= thr).astype(int)
+        ratings["reward"] = ratings["rating"].astype(float)      # garde 1 … 5
+        ratings["reward"] = ratings["rating"] / 5.0 
         canon = ratings.rename(
             columns={"movieId": "item_id", "userId": "user_id"}
         )[["item_id", "user_id", "reward"]]
