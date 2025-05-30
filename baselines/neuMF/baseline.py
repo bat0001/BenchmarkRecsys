@@ -146,11 +146,12 @@ class NeuMFBaseline(BaseBaseline):
                 losses.append(loss.item())
             print(f"[NeuMF] epoch {ep:02d} | loss = {np.mean(losses):.4f}")
 
-        raw_logs = self._offline_log_sequences(
-            top_k=top_k,
-            visit_id=cfg.num_iterations - 1
-        )
-        return {}, raw_logs
+        # raw_logs = self._offline_log_sequences(
+        #     top_k=top_k,
+        #     visit_id=cfg.num_iterations - 1
+        # )
+        # return {}, raw_logs
+        return {} 
 
     @torch.inference_mode()
     def rank(self, user_ids: torch.Tensor, k: int | None = None) -> torch.Tensor:
@@ -190,4 +191,37 @@ class NeuMFBaseline(BaseBaseline):
                         "genres":   meta["genres"],
                     }
                 )
+        return logs
+    
+    @torch.inference_mode()
+    def predict_sequences(self,
+                          test_df:  pd.DataFrame,
+                          *,
+                          top_k:   int,
+                          visit_id: int = 0) -> list[dict]:
+        """
+        Génèrate for each user in `test_df`
+        the top‑k list, and return a list[dict] that works with the LLM.
+        """
+        self.model.eval()
+        logs = []
+
+        users_raw = sorted(test_df["user_id"].unique())
+        for u_raw in users_raw:
+            if u_raw not in self.user_map:       
+                continue
+
+            rec_items = self.rank(
+                torch.tensor([u_raw]), k=top_k
+            )[0].tolist()
+
+            for it in rec_items:
+                meta = self.item_meta.get(it, {"title": "", "genres": ""})
+                logs.append({
+                    "visit":    visit_id,
+                    "user_id":  int(u_raw),
+                    "item_key": int(it),
+                    "title":    meta["title"],
+                    "genres":   meta["genres"],
+                })
         return logs
