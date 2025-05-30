@@ -4,7 +4,6 @@ from collections import defaultdict, Counter
 
 from utils.metrics.base        import BaseMetric, SequenceView
 from utils.llm.judge_hf_pref   import LLMJudgeHFPref
-from utils.llm.prompt_factoy  import format_pair_prompt
 from utils.metrics.registry    import register
 
 
