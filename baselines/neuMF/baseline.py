@@ -172,7 +172,7 @@ class NeuMFBaseline(BaseBaseline):
         return topk_idx.cpu().apply_(lambda x: self.inv_item_map[int(x)])
 
     def _offline_log_sequences(self, *, top_k:int = 10, visit_id:int = 0):
-        """Un record = (visit, user_id, item_key, title, genres)"""
+        """A record = (visit, user_id, item_key, title, genres)"""
         self.model.eval()
         logs = []
 
