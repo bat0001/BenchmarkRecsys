@@ -1,6 +1,6 @@
 from __future__ import annotations
-import argparse, pandas as pd, wandb, numpy as np
-from typing     import Dict
+import argparse, pandas as pd, wandb, numpy as np, matplotlib.pyplot as plt, seaborn as sns, matplotlib as mpl
+from typing     import Dict, Any
 from wandb      import Table
 from tabulate   import tabulate
 
@@ -39,6 +39,40 @@ def log_comparison(metrics: Dict[str, Dict[str, float]]):
 
     print(tabulate(table.data, headers=headers, tablefmt="github"))
 
+def plot_losses(loss_histories: dict[str, list[float]]):
+    """
+    loss_histories : dict[baseline] -> list[float]
+    Retourne un objet Figure « paper style ».
+    """
+    # --- style académique -------------------------------------------------
+    sns.set_theme(style="whitegrid", context="paper",
+                  rc={
+                      "axes.edgecolor": "0.2",
+                      "axes.linewidth": 0.8,
+                      "grid.linewidth": 0.5,
+                      "font.family":    "serif",
+                      "font.serif":     ["Times New Roman", "Times", "DejaVu Serif"],
+                      "axes.spines.top":    False,
+                      "axes.spines.right":  False,
+                  })
+    palette = sns.color_palette("colorblind", n_colors=len(loss_histories))
+
+    fig, ax = plt.subplots(figsize=(3.3, 2.1), dpi=150) 
+
+    for (name, losses), col in zip(loss_histories.items(), palette):
+        ax.plot(range(1, len(losses)+1), losses,
+                marker="o", markersize=2,
+                linewidth=1,
+                color=col, label=name)
+
+    ax.set_xlabel("Epoch",  labelpad=2)
+    ax.set_ylabel("Training loss", labelpad=2)
+    ax.set_title("Training curves", pad=4, fontsize=10)
+    ax.legend(frameon=False, fontsize=7, loc="best")
+    ax.tick_params(axis='both', which='major', labelsize=7, pad=2)
+
+    fig.tight_layout(pad=0.5)
+    return fig
 
 def main() -> None:
     p = argparse.ArgumentParser()
@@ -96,6 +130,11 @@ def main() -> None:
             title_col ="title",
             reward_col="reward")
 
+    fitted_baselines: dict[str, Any] = {}      # pour le plot
+    metrics_map:      dict[str, dict] = {}
+    raw_results:      dict[str, list] = {}
+
+    loss_histories: dict[str, list[float]] = {}
 
     for name, on in active.items():
         if not on:
@@ -103,24 +142,17 @@ def main() -> None:
 
         baseline = BASELINE_REGISTRY[name](cfg)
 
-        # met_off, raw_off = baseline.fit(canon_df)
-        # met_off, raw_off = baseline.fit(train_df) 
-        _ = baseline.fit(train_df)
-        raw_off = baseline.predict_sequences(
-            test_df,
-            top_k      = getattr(cfg, "eval_topk", 10),
-            visit_id   = cfg.num_iterations - 1
-        )
-        metrics_map[name] = {}               # (pas de métriques locales ici)
-        raw_results[name] = raw_off
-        # if isinstance(baseline, OnlineMixin):
-        #     met_onl, raw_onl = baseline.online_simulate(cfg.num_iterations)
-        #     met_off.update(met_onl)
-        #     raw_off = raw_onl if raw_onl else raw_off
+        met, _ = baseline.fit(train_df)  
+        raw    = baseline.predict_sequences(test_df,
+                                    top_k=getattr(cfg, "eval_topk", 10),
+                                    visit_id=cfg.num_iterations-1)
 
-        # metrics_map[name] = met_off
-        # if raw_off:
-        #     raw_results[name] = raw_off
+        metrics_map[name] = met
+        raw_results[name] = raw
+        # -----------------------------------------------------------------
+        # ➜ enregistrer l'historique
+        if hasattr(baseline, "_loss_history"):
+            loss_histories[name] = baseline._loss_history
 
     metric_classes = get_metric_classes()
 
@@ -129,17 +161,17 @@ def main() -> None:
     global_metrics  = {n: c for n, c in metric_classes.items()
                     if getattr(c, "global_metric", False)}
 
-    print(f'Local metrics -- {local_metrics}')
-    print(f'Global metrics -- {global_metrics}')
-    for bl_name, raw in raw_results.items():
-        metrics_map.setdefault(bl_name, {})
-        for metric_name, MetricCls in local_metrics.items():
-            metric_obj = MetricCls(cfg)                       
-            score      = metric_obj(canon_df, raw, cfg)          
-            if isinstance(score, dict):
-                metrics_map[bl_name].update(score)
-            else:
-                metrics_map[bl_name][metric_name] = score
+    # print(f'Local metrics -- {local_metrics}')
+    # print(f'Global metrics -- {global_metrics}')
+    # for bl_name, raw in raw_results.items():
+    #     metrics_map.setdefault(bl_name, {})
+    #     for metric_name, MetricCls in local_metrics.items():
+    #         metric_obj = MetricCls(cfg)                       
+    #         score      = metric_obj(canon_df, raw, cfg)          
+    #         if isinstance(score, dict):
+    #             metrics_map[bl_name].update(score)
+    #         else:
+    #             metrics_map[bl_name][metric_name] = score
 
     if global_metrics:
         # seq_view  = SequenceView(raw_results, canon_df, item_key=item_key)
@@ -180,6 +212,19 @@ def main() -> None:
         fig_ctr = plot_fraction_relevant_curves(ctr_curves, styles, labels)
         wandb.log({"CTR Curves": wandb.Image(fig_ctr)})
 
+    plt.style.use("seaborn-v0_8-whitegrid")         
+
+    fig, ax = plt.subplots(figsize=(6,4))
+    if loss_histories:
+        fig_loss = plot_losses(loss_histories)
+
+        wandb.log(
+            {
+                "Task 1/training_curves": wandb.Image(fig_loss),
+                **{f"Task 1/{b}/final_train_loss": h[-1]
+                for b, h in loss_histories.items()}
+            }
+        )
     wandb.finish()
 
 
