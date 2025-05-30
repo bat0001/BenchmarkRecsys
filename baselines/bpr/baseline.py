@@ -2,6 +2,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import torch
+import wandb
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from tqdm.auto import tqdm
@@ -37,6 +38,7 @@ class _BPRModel(nn.Module):
         super().__init__()
         self.user_e = nn.Embedding(n_users, emb_dim)
         self.item_e = nn.Embedding(n_items, emb_dim)
+        
         nn.init.xavier_normal_(self.user_e.weight, gain=1.0)
         nn.init.xavier_normal_(self.item_e.weight, gain=1.0)
 
@@ -49,25 +51,33 @@ class _BPRModel(nn.Module):
         return -torch.log(torch.sigmoid(pos_s - neg_s) + 1e-8).mean()
 
 class BPRBaseline(BaseBaseline):
-    def fit(self, train_df: pd.DataFrame, *,
-            user_col="user_id", item_col="item_id", reward_col="reward",
-            min_inter=5, emb_dim=None, epochs=None, batch_size=None):
+    def fit( self,
+             train_df:  pd.DataFrame,
+             *,
+             user_col:   str = "user_id",
+             item_col:   str = "item_id",
+             reward_col: str = "reward",
+             min_inter:  int = 5,
+             emb_dim:    int | None = None,
+             epochs:     int | None = None,
+             batch_size: int | None = None,
+           ) -> tuple[dict, list[dict]]:
 
         cfg        = self.cfg
         emb_dim    = emb_dim    or getattr(cfg, "bpr_emb_dim", 64)
-        epochs     = epochs     or getattr(cfg, "bpr_epochs",  10)
-        batch_size = batch_size or getattr(cfg, "bpr_batch",   2048)
+        epochs     = epochs     or getattr(cfg, "bpr_epochs",   15)
+        batch_size = batch_size or getattr(cfg, "bpr_batch", 2048)
         lr         = getattr(cfg, "bpr_lr", 1e-3)
+        top_k      = getattr(cfg, "eval_topk", 10)
 
         pos_df = train_df[train_df[reward_col] == 1].copy()
-        keep_u = pos_df[user_col].value_counts()
-        keep_u = keep_u[keep_u >= min_inter].index
-        pos_df = pos_df[pos_df[user_col].isin(keep_u)]
+        active = pos_df[user_col].value_counts()
+        pos_df = pos_df[pos_df[user_col].isin(active[active >= min_inter].index)]
 
         self.item_meta = (
-            pos_df.drop_duplicates(item_col)[[item_col, "title", "genres"]]
+            pos_df.drop_duplicates(item_col)
                   .set_index(item_col)[["title", "genres"]]
-                  .to_dict(orient="index")
+                  .to_dict("index")
             if {"title", "genres"}.issubset(pos_df.columns) else {}
         )
 
@@ -79,7 +89,7 @@ class BPRBaseline(BaseBaseline):
         pos_df["i_idx"] = pos_df[item_col].map(self.item_map)
 
         n_users, n_items = len(self.user_map), len(self.item_map)
-        user_pos = pos_df.groupby("u_idx")["i_idx"].apply(list).to_dict()
+        user_pos = pos_df.groupby("u_idx")["i_idx"].agg(list).to_dict()
 
         steps = max(len(pos_df) * 5, 20_000)
         loader = DataLoader(
@@ -90,35 +100,50 @@ class BPRBaseline(BaseBaseline):
         self.model = _BPRModel(n_users, n_items, emb_dim).to(self.device)
         opt = torch.optim.Adam(self.model.parameters(), lr=lr)
 
+        self._loss_history: list[float] = []
         self.model.train()
         for ep in range(1, epochs + 1):
-            losses = []
+            epoch_losses = []
             for u, pos_i, neg_i in tqdm(loader, leave=False,
                                         desc=f"[BPR] epoch {ep}/{epochs}"):
                 u, pos_i, neg_i = (t.to(self.device) for t in (u, pos_i, neg_i))
                 loss = self.model.triplet_loss(u, pos_i, neg_i)
                 opt.zero_grad(); loss.backward(); opt.step()
-                losses.append(loss.item())
-            print(f"[BPR] epoch {ep:02d} | loss = {np.mean(losses):.4f}")
+                epoch_losses.append(loss.item())
 
-        return {}
+            mean_loss = float(np.mean(epoch_losses))
+            self._loss_history.append(mean_loss)
+            print(f"[BPR] epoch {ep:02d} | loss = {mean_loss:.4f}")
+
+        metrics: dict[str, float] = {
+            "final_train_loss": self._loss_history[-1]
+        }
+
+
+        raw_logs = self.predict_sequences(
+            df        = train_df,                     
+            top_k     = top_k,
+            visit_id  = cfg.num_iterations - 1
+        )
+
+        return metrics, raw_logs
 
     @torch.inference_mode()
     def predict_sequences(self,
-                          test_df: pd.DataFrame,
+                          df:        pd.DataFrame,
                           *,
-                          top_k:   int,
+                          top_k:    int = 10,
                           visit_id: int = 0) -> list[dict]:
         """
-        Génère une ligne par (user,item) recommandé :
-        {visit, user_id, item_key, title, genres}
+        Génère les TOP‑k pour **tous** les users présents dans `df`
+        et renvoie une liste de logs utilisables par la métrique LLM.
         """
         self.model.eval()
         logs = []
+        unique_users = df["user_id"].unique()
 
-        users_raw = sorted(test_df["user_id"].unique())
-        for u_raw in users_raw:
-            if u_raw not in self.user_map:     
+        for u_raw in unique_users:
+            if u_raw not in self.user_map:          
                 continue
 
             rec_items = self.rank(
@@ -127,13 +152,15 @@ class BPRBaseline(BaseBaseline):
 
             for it in rec_items:
                 meta = self.item_meta.get(it, {"title": "", "genres": ""})
-                logs.append({
-                    "visit":    visit_id,
-                    "user_id":  int(u_raw),
-                    "item_key": int(it),
-                    "title":    meta["title"],
-                    "genres":   meta["genres"],
-                })
+                logs.append(
+                    {
+                        "visit":    visit_id,
+                        "user_id":  int(u_raw),
+                        "item_key": int(it),
+                        "title":    meta["title"],
+                        "genres":   meta["genres"],
+                    }
+                )
         return logs
 
     @torch.inference_mode()
