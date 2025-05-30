@@ -55,7 +55,7 @@ class BPRBaseline(BaseBaseline):
 
         cfg        = self.cfg
         emb_dim    = emb_dim    or getattr(cfg, "bpr_emb_dim", 64)
-        epochs     = epochs     or getattr(cfg, "bpr_epochs",  1)
+        epochs     = epochs     or getattr(cfg, "bpr_epochs",  10)
         batch_size = batch_size or getattr(cfg, "bpr_batch",   2048)
         lr         = getattr(cfg, "bpr_lr", 1e-3)
 
