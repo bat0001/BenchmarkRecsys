@@ -95,7 +95,7 @@ class NeuMFBaseline(BaseBaseline):
         cfg      = self.cfg
         mf_dim   = mf_dim  or getattr(cfg, "neumf_mf_dim", 16)
         mlp_dim  = mlp_dim or getattr(cfg, "neumf_mlp_dim", 32)
-        epochs   = epochs  or getattr(cfg, "neumf_epochs",  1)
+        epochs   = epochs  or getattr(cfg, "neumf_epochs",  10)
         batch    = batch   or getattr(cfg, "neumf_batch",  1024)
         lr       = getattr(cfg, "neumf_lr", 1e-3)
         top_k    = getattr(cfg, "eval_topk", 10)
