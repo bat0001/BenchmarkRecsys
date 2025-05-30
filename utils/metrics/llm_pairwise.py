@@ -2,21 +2,23 @@ from __future__ import annotations
 from itertools import combinations
 from collections import defaultdict, Counter
 
-from utils.metrics.base        import BaseMetric, SequenceView
-from utils.llm.judge_hf_pref   import LLMJudgeHFPref
-from utils.metrics.registry    import register
+from utils.metrics.base      import BaseMetric, SequenceView
+from utils.llm.judge_hf_pref import LLMJudgeHFPref
+from utils.metrics.registry  import register
 
 
 @register("llm_pairwise")
 class LLMPairwise(BaseMetric):
     """
-    Compare la séquence *finale* (visit == final_visit) de chaque baseline,
-    2‑à‑2, via un LLM‑as‑a‑Judge.
+    Pour CHAQUE utilisateur, on compare les recommandations du dernier `visit`
+    entre toutes les baselines deux‑à‑deux via un LLM‑Judge.
+
+    Le score final est agrégé par Bradley‑Terry.
     """
     global_metric = True
 
-    FINAL_VISIT = -1        
-    MAX_LIST    = 50        
+    FINAL_VISIT = -1     
+    MAX_LIST    = 50     
 
     def __init__(self, cfg):
         super().__init__(cfg)
@@ -25,27 +27,17 @@ class LLMPairwise(BaseMetric):
             temperature=max(0.1, cfg.llm.temperature)
         )
 
-
     @staticmethod
-    def _extract_final_list(raw_records: list[dict], visit_id: int):
-        return [r for r in raw_records if r.get("visit") == visit_id]
-
-    @staticmethod
-    def _to_titles(item_records: list[dict] | list[int],
-                   max_len: int):
-       
-        titles = []
-        for it in item_records:
-            if isinstance(it, dict):             
-                title = it.get("title") or str(it.get("item_key"))
-            else:                                
-              title = str(it)
-            titles.append(title)
-
-        counter = Counter(titles)
-        clean   = []
-        seen    = set()
-        for t in titles:
+    def _dedup_titles(items: list[str], max_len: int) -> list[str]:
+        """
+        items : titres déjà convertis en str.
+        • Dé‑duplique en conservant l’ordre.
+        • Compacte « X apparaît n fois » →  « X ×n ».
+        • Tronque à `max_len`.
+        """
+        counter = Counter(items)
+        seen, clean = set(), []
+        for t in items:
             if t in seen:
                 continue
             seen.add(t)
@@ -54,39 +46,62 @@ class LLMPairwise(BaseMetric):
                 break
         return clean
 
+    @classmethod
+    def _final_list(cls, records: list[dict], visit_id: int) -> list[str]:
+        """
+        • Filtre sur le `visit` final
+        • Convertit chaque record → titre (ou item_key si pas de titre)
+        • Dé‑duplique & tronque
+        """
+        titles = [
+            (r.get("title") or str(r.get("item_key")))
+            for r in records
+            if r.get("visit") == visit_id
+        ]
+        return cls._dedup_titles(titles, cls.MAX_LIST)
 
-    def requires_predictions(self): 
+    def requires_predictions(self):    
         return False
 
     def __call__(self, seq_view: SequenceView, cfg):
-        raw        = seq_view.raw              
-        baselines  = list(raw)
+        raw = seq_view.raw                      
+        baselines = list(raw)
         if len(baselines) < 2:
             return {}
 
-       
+        final_visit = max(r.get("visit", 0)
+                          for recs in raw.values() for r in recs)
+
         votes = defaultdict(lambda: defaultdict(int))
-        final_visit = max(r.get("visit", 0) for recs in raw.values() for r in recs)
 
-        for a, b in combinations(baselines, 2):
-            rec_a = self._extract_final_list(raw[a], final_visit)
-            rec_b = self._extract_final_list(raw[b], final_visit)
+        user_ids = {
+            r["user_id"] for recs in raw.values() for r in recs
+            if "user_id" in r
+        }
 
-            list_a = self._to_titles(rec_a, self.MAX_LIST)
-            list_b = self._to_titles(rec_b, self.MAX_LIST)
-            if not list_a or not list_b:
-                continue
+        for u in user_ids:
+            user_lists = {}
+            for bl in baselines:
+                recs_u = [r for r in raw[bl] if r.get("user_id") == u]
+                user_lists[bl] = self._final_list(recs_u, final_visit)
 
-            win = self.judge.compare(list_a, list_b, meta=None, cfg=cfg)
-            winner, loser = ((a, b) if win == 0 else (b, a))
-            votes[winner][loser] += 1
+            for a, b in combinations(baselines, 2):
+                list_a, list_b = user_lists[a], user_lists[b]
+                if not list_a or not list_b:
+                    continue
+
+                win = self.judge.compare(list_a, list_b,
+                                         meta=None, cfg=cfg)
+                winner, loser = (a, b) if win == 0 else (b, a)
+                votes[winner][loser] += 1
 
         scores = {b: 1.0 for b in baselines}
         for _ in range(100):
             for a in baselines:
                 num = sum(votes[a][b] for b in baselines if b != a)
                 den = sum(
-                    (votes[a][b] + votes[b][a]) / (scores[a] + scores[b] + 1e-9)
+                    (votes[a][b] + votes[b][a]) /
+                    (scores[a] + scores[b] + 1e-9)
                     for b in baselines if b != a
                 )
                 scores[a] = num / max(1e-9, den)
