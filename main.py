@@ -220,9 +220,9 @@ def main() -> None:
 
         wandb.log(
             {
-                "Task 1/training_curves": wandb.Image(fig_loss),
-                **{f"Task 1/{b}/final_train_loss": h[-1]
-                for b, h in loss_histories.items()}
+                "Task 1/training_curves": wandb.Image(fig_loss)
+                # **{f"Task 1/{b}/final_train_loss": h[-1]
+                # for b, h in loss_histories.items()}
             }
         )
     wandb.finish()
